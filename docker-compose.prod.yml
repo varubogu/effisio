@@ -1,0 +1,342 @@
+version: '3.9'
+
+# ========================================
+# Effisio 本番環境 Docker Compose設定（参考）
+# ========================================
+# 注意: 本番環境では Kubernetes や ECS の使用を推奨
+# このファイルは小規模デプロイメントの参考用です
+
+services:
+  # ========================================
+  # PostgreSQL データベース
+  # ========================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: effisio-postgres-prod
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+      TZ: UTC
+    ports:
+      # 外部公開しない（アプリケーションからのみアクセス）
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # バックアップ用マウント
+      - ./backups:/backups
+    networks:
+      - effisio-prod-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # リソース制限
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    # ログ設定
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ========================================
+  # Redis キャッシュ
+  # ========================================
+  redis:
+    image: redis:7-alpine
+    container_name: effisio-redis-prod
+    restart: always
+    command: >
+      redis-server
+      --appendonly yes
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 1gb
+      --maxmemory-policy allkeys-lru
+    environment:
+      TZ: UTC
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - effisio-prod-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ========================================
+  # Go バックエンド API サーバー（複数インスタンス）
+  # ========================================
+  backend:
+    image: effisio/backend:${VERSION:-latest}
+    restart: always
+    environment:
+      ENV: production
+      SERVER_PORT: 8080
+
+      # データベース
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DB_SSLMODE: require
+      DB_MAX_OPEN_CONNS: 50
+      DB_MAX_IDLE_CONNS: 10
+
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+      # JWT
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_TOKEN_EXPIRATION: 3600
+      JWT_REFRESH_TOKEN_EXPIRATION: 2592000
+
+      # ログ
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+
+      # セキュリティ
+      SECURITY_HEADERS_ENABLED: true
+
+      # その他
+      TZ: UTC
+    ports:
+      - "8080"  # ポートはNginxから振り分け
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - effisio-prod-network
+    deploy:
+      # スケールアウト: 3インスタンス
+      replicas: 3
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ========================================
+  # Next.js フロントエンド
+  # ========================================
+  frontend:
+    image: effisio/frontend:${VERSION:-latest}
+    restart: always
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: https://api.effisio.com/api/v1
+    ports:
+      - "3000"
+    depends_on:
+      - backend
+    networks:
+      - effisio-prod-network
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ========================================
+  # Nginx リバースプロキシ + ロードバランサー
+  # ========================================
+  nginx:
+    image: nginx:alpine
+    container_name: effisio-nginx-prod
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      # Let's Encrypt証明書
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - effisio-prod-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ========================================
+  # Prometheus - メトリクス収集
+  # ========================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: effisio-prometheus
+    restart: always
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - effisio-prod-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ========================================
+  # Grafana - メトリクス可視化
+  # ========================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: effisio-grafana
+    restart: always
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_SERVER_ROOT_URL: https://monitoring.effisio.com
+    ports:
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+    networks:
+      - effisio-prod-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ========================================
+# ネットワーク設定
+# ========================================
+networks:
+  effisio-prod-network:
+    driver: bridge
+    name: effisio-prod-network
+
+# ========================================
+# ボリューム設定
+# ========================================
+volumes:
+  postgres_data:
+    name: effisio-postgres-prod-data
+  redis_data:
+    name: effisio-redis-prod-data
+  prometheus_data:
+    name: effisio-prometheus-data
+  grafana_data:
+    name: effisio-grafana-data
+
+# ========================================
+# デプロイメントコマンド例
+# ========================================
+#
+# 環境変数を読み込んでデプロイ:
+#   export $(cat .env.production | xargs)
+#   docker-compose -f docker-compose.prod.yml up -d
+#
+# 特定のサービスのみスケールアウト:
+#   docker-compose -f docker-compose.prod.yml up -d --scale backend=5
+#
+# ローリングアップデート:
+#   docker-compose -f docker-compose.prod.yml pull
+#   docker-compose -f docker-compose.prod.yml up -d --no-deps --build backend
+#
+# ログ確認:
+#   docker-compose -f docker-compose.prod.yml logs -f backend
+#
+# バックアップ:
+#   docker-compose -f docker-compose.prod.yml exec postgres pg_dump -U ${DB_USER} ${DB_NAME} > backup.sql
+#
+# ========================================

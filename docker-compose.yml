@@ -1,0 +1,285 @@
+version: '3.9'
+
+# ========================================
+# Effisio 開発環境 Docker Compose設定
+# ========================================
+
+services:
+  # ========================================
+  # PostgreSQL データベース
+  # ========================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: effisio-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: effisio_dev
+      # 日本語対応
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=ja_JP.UTF-8"
+      TZ: Asia/Tokyo
+    ports:
+      - "5432:5432"
+    volumes:
+      # データ永続化
+      - postgres_data:/var/lib/postgresql/data
+      # 初期化スクリプト（オプション）
+      - ./backend/migrations/init:/docker-entrypoint-initdb.d
+    networks:
+      - effisio-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ========================================
+  # Redis キャッシュ
+  # ========================================
+  redis:
+    image: redis:7-alpine
+    container_name: effisio-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ""
+    environment:
+      TZ: Asia/Tokyo
+    ports:
+      - "6379:6379"
+    volumes:
+      # データ永続化
+      - redis_data:/data
+    networks:
+      - effisio-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ========================================
+  # Go バックエンド API サーバー
+  # ========================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: effisio-backend
+    restart: unless-stopped
+    environment:
+      # アプリケーション設定
+      ENV: development
+      SERVER_PORT: 8080
+
+      # データベース設定
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: effisio_dev
+      DB_SSLMODE: disable
+
+      # Redis設定
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+
+      # JWT設定
+      JWT_SECRET: dev-secret-key-change-in-production
+      JWT_ACCESS_TOKEN_EXPIRATION: 3600
+      JWT_REFRESH_TOKEN_EXPIRATION: 2592000
+
+      # ログ設定
+      LOG_LEVEL: debug
+      LOG_FORMAT: console
+
+      # CORS設定
+      CORS_ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:8080"
+
+      # タイムゾーン
+      TZ: Asia/Tokyo
+    ports:
+      - "8080:8080"
+      - "9090:9090"  # Prometheus メトリクス
+    volumes:
+      # ホットリロード用
+      - ./backend:/app
+      # Go モジュールキャッシュ
+      - go_modules:/go/pkg/mod
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - effisio-network
+    # 開発環境用: air でホットリロード
+    command: air -c .air.toml
+
+  # ========================================
+  # Next.js フロントエンド
+  # ========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: effisio-frontend
+    restart: unless-stopped
+    environment:
+      # Next.js設定
+      NODE_ENV: development
+      PORT: 3000
+
+      # API設定
+      NEXT_PUBLIC_API_URL: http://localhost:8080/api/v1
+
+      # タイムゾーン
+      TZ: Asia/Tokyo
+    ports:
+      - "3000:3000"
+    volumes:
+      # ホットリロード用
+      - ./frontend:/app
+      # node_modules は除外（パフォーマンス向上）
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    networks:
+      - effisio-network
+    # 開発サーバー起動
+    command: npm run dev
+
+  # ========================================
+  # Nginx リバースプロキシ（オプション）
+  # ========================================
+  nginx:
+    image: nginx:alpine
+    container_name: effisio-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      # SSL証明書（本番環境用）
+      # - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - effisio-network
+    profiles:
+      - with-nginx  # docker-compose --profile with-nginx up で起動
+
+  # ========================================
+  # Adminer - データベース管理ツール（開発環境のみ）
+  # ========================================
+  adminer:
+    image: adminer:latest
+    container_name: effisio-adminer
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: nette
+    depends_on:
+      - postgres
+    networks:
+      - effisio-network
+    profiles:
+      - tools  # docker-compose --profile tools up で起動
+
+  # ========================================
+  # Redis Commander - Redis管理ツール（開発環境のみ）
+  # ========================================
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: effisio-redis-commander
+    restart: unless-stopped
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "8082:8081"
+    depends_on:
+      - redis
+    networks:
+      - effisio-network
+    profiles:
+      - tools  # docker-compose --profile tools up で起動
+
+  # ========================================
+  # Mailhog - メール送信テスト用（開発環境のみ）
+  # ========================================
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: effisio-mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    networks:
+      - effisio-network
+    profiles:
+      - tools  # docker-compose --profile tools up で起動
+
+# ========================================
+# ネットワーク設定
+# ========================================
+networks:
+  effisio-network:
+    driver: bridge
+    name: effisio-network
+
+# ========================================
+# ボリューム設定（データ永続化）
+# ========================================
+volumes:
+  postgres_data:
+    name: effisio-postgres-data
+  redis_data:
+    name: effisio-redis-data
+  go_modules:
+    name: effisio-go-modules
+
+# ========================================
+# 使用方法
+# ========================================
+#
+# 基本起動:
+#   docker-compose up -d
+#
+# 管理ツール付きで起動:
+#   docker-compose --profile tools up -d
+#
+# Nginx付きで起動:
+#   docker-compose --profile with-nginx up -d
+#
+# ログ確認:
+#   docker-compose logs -f [service-name]
+#
+# 停止:
+#   docker-compose down
+#
+# 停止 + ボリューム削除:
+#   docker-compose down -v
+#
+# 再ビルド:
+#   docker-compose build --no-cache
+#
+# サービス一覧:
+#   docker-compose ps
+#
+# シェルに入る:
+#   docker-compose exec backend sh
+#   docker-compose exec frontend sh
+#
+# データベースに接続:
+#   docker-compose exec postgres psql -U postgres -d effisio_dev
+#
+# Redisに接続:
+#   docker-compose exec redis redis-cli
+#
+# ========================================

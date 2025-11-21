@@ -1,0 +1,32 @@
+# ========================================
+# Effisio バックエンド開発環境 Dockerfile
+# ========================================
+
+FROM golang:1.21-alpine
+
+# 作業ディレクトリ設定
+WORKDIR /app
+
+# 必要なパッケージをインストール
+RUN apk add --no-cache \
+    git \
+    make \
+    gcc \
+    musl-dev \
+    curl
+
+# Air（ホットリロードツール）をインストール
+RUN go install github.com/cosmtrek/air@latest
+
+# go.mod と go.sum をコピー（依存関係キャッシュ）
+COPY go.mod go.sum* ./
+RUN go mod download
+
+# ソースコードをコピー
+COPY . .
+
+# ポート公開
+EXPOSE 8080 9090
+
+# Air でホットリロード実行
+CMD ["air", "-c", ".air.toml"]

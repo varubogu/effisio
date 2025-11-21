@@ -1,0 +1,201 @@
+# ========================================
+# golangci-lint 設定ファイル
+# ========================================
+# https://golangci-lint.run/usage/configuration/
+
+run:
+  # タイムアウト設定
+  timeout: 5m
+
+  # 対象ディレクトリ
+  tests: true
+  build-tags:
+    - integration
+
+  # スキップするディレクトリ
+  skip-dirs:
+    - vendor
+    - tmp
+    - testdata
+    - migrations
+
+  # Go バージョン
+  go: '1.21'
+
+output:
+  # 出力形式: colored-line-number, line-number, json, tab, checkstyle, code-climate
+  format: colored-line-number
+
+  # 出力をソート
+  sort-results: true
+
+linters:
+  # すべてのリンターを無効化してから、必要なものだけ有効化
+  disable-all: true
+
+  enable:
+    # デフォルト
+    - errcheck      # エラーチェック漏れ
+    - gosimple      # コードの簡略化提案
+    - govet         # go vet の問題検出
+    - ineffassign   # 無効な代入
+    - staticcheck   # 静的解析
+    - unused        # 未使用コード
+
+    # 追加の推奨リンター
+    - bodyclose     # HTTP レスポンスボディのクローズ漏れ
+    - gocyclo       # 循環的複雑度
+    - gofmt         # コードフォーマット
+    - goimports     # import の整理
+    - revive        # golint の後継
+    - gosec         # セキュリティ問題
+    - misspell      # スペルミス
+    - unconvert     # 不要な型変換
+    - unparam       # 未使用パラメータ
+    - prealloc      # スライスの事前割り当て
+    - exportloopref # ループ変数のエクスポート
+    - gocritic      # 詳細な静的解析
+
+linters-settings:
+  errcheck:
+    # エラーチェックを無視する関数
+    exclude-functions:
+      - (io.Closer).Close
+      - (*os.File).Close
+
+  gocyclo:
+    # 循環的複雑度の閾値
+    min-complexity: 15
+
+  golint:
+    # 最小信頼度
+    min-confidence: 0.8
+
+  govet:
+    # すべてのチェックを有効化
+    check-shadowing: true
+    enable-all: true
+
+  revive:
+    # 最小信頼度
+    confidence: 0.8
+    rules:
+      - name: exported
+        disabled: false
+      - name: package-comments
+        disabled: false
+      - name: var-naming
+        disabled: false
+
+  gosec:
+    # セキュリティチェックの除外
+    excludes:
+      - G104  # エラーハンドリング（errcheck で検出）
+
+  misspell:
+    # ロケール設定
+    locale: US
+
+  gofmt:
+    # シンプル化を有効化
+    simplify: true
+
+  goimports:
+    # ローカルパッケージのプレフィックス
+    local-prefixes: github.com/yourusername/effisio
+
+  gocritic:
+    # 有効にするチェック
+    enabled-checks:
+      - appendAssign
+      - argOrder
+      - assignOp
+      - badCall
+      - badCond
+      - boolExprSimplify
+      - builtinShadow
+      - captLocal
+      - caseOrder
+      - codegenComment
+      - commentedOutCode
+      - defaultCaseOrder
+      - deprecatedComment
+      - dupArg
+      - dupBranchBody
+      - dupCase
+      - dupSubExpr
+      - elseif
+      - emptyFallthrough
+      - equalFold
+      - flagDeref
+      - flagName
+      - hexLiteral
+      - indexAlloc
+      - initClause
+      - methodExprCall
+      - nilValReturn
+      - octalLiteral
+      - offBy1
+      - rangeExprCopy
+      - rangeValCopy
+      - regexpMust
+      - sloppyLen
+      - stringXbytes
+      - switchTrue
+      - typeAssertChain
+      - typeSwitchVar
+      - typeUnparen
+      - underef
+      - unlambda
+      - unnecessaryBlock
+      - unslice
+      - valSwap
+      - weakCond
+      - wrapperFunc
+      - yodaStyleExpr
+
+issues:
+  # すべての問題を表示
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+  # 除外するパターン
+  exclude-rules:
+    # テストファイルは一部のルールを除外
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - dupl
+        - gosec
+
+    # main.go は一部のルールを除外
+    - path: cmd/server/main\.go
+      linters:
+        - gocyclo
+
+    # モデルファイルは構造体タグのチェックを除外
+    - path: internal/models/
+      text: "should have comment or be unexported"
+
+  # 新しいコードのみチェック（オプション）
+  # new: true
+  # new-from-rev: origin/develop
+
+severity:
+  # デフォルトの深刻度
+  default-severity: error
+
+  # ルールごとの深刻度設定
+  rules:
+    - linters:
+        - govet
+      severity: error
+    - linters:
+        - errcheck
+        - gosec
+      severity: error
+    - linters:
+        - revive
+        - staticcheck
+      severity: warning
