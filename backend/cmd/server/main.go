@@ -21,6 +21,7 @@ import (
 	"github.com/varubogu/effisio/backend/internal/middleware"
 	"github.com/varubogu/effisio/backend/internal/repository"
 	"github.com/varubogu/effisio/backend/internal/service"
+	"github.com/varubogu/effisio/backend/pkg/util"
 )
 
 func main() {
@@ -49,18 +50,32 @@ func main() {
 	// Redis接続（将来的に実装）
 	// redisClient := initRedis(cfg)
 
+	// ユーティリティの初期化
+	jwtService := util.NewJWTService(
+		[]byte(cfg.JWT.Secret),
+		cfg.JWT.AccessTokenExpiration,
+		cfg.JWT.RefreshTokenExpiration,
+	)
+
 	// リポジトリの初期化
 	userRepo := repository.NewUserRepository(db)
+	refreshTokenRepo := repository.NewRefreshTokenRepository(db)
 
 	// サービスの初期化
 	userService := service.NewUserService(userRepo, logger)
+	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtService, logger)
 
 	// ハンドラーの初期化
 	healthHandler := handler.NewHealthHandler(logger)
 	userHandler := handler.NewUserHandler(userService, logger)
+	authHandler := handler.NewAuthHandler(authService, logger)
+
+	// ミドルウェアの初期化
+	authMiddleware := middleware.NewAuthMiddleware(jwtService, logger)
+	rbacMiddleware := middleware.NewRBACMiddleware(logger)
 
 	// Ginルーターの設定
-	router := setupRouter(cfg, logger, healthHandler, userHandler)
+	router := setupRouter(cfg, logger, healthHandler, userHandler, authHandler, authMiddleware, rbacMiddleware)
 
 	// HTTPサーバーの設定
 	srv := &http.Server{
@@ -144,6 +159,9 @@ func setupRouter(
 	logger *zap.Logger,
 	healthHandler *handler.HealthHandler,
 	userHandler *handler.UserHandler,
+	authHandler *handler.AuthHandler,
+	authMiddleware *middleware.AuthMiddleware,
+	rbacMiddleware *middleware.RBACMiddleware,
 ) *gin.Engine {
 	// 本番環境ではリリースモードに設定
 	if cfg.Server.Env == "production" {
@@ -168,14 +186,33 @@ func setupRouter(
 			c.JSON(http.StatusOK, gin.H{"message": "pong"})
 		})
 
-		// ユーザー関連（将来的に認証を追加）
-		users := api.Group("/users")
+		// 認証関連
+		auth := api.Group("/auth")
 		{
+			auth.POST("/login", authHandler.Login)
+			auth.POST("/refresh", authHandler.RefreshToken)
+			auth.POST("/logout", authHandler.Logout)
+
+			// 認証が必要なエンドポイント
+			auth.POST("/logout-all", authMiddleware.RequireAuth(), authHandler.LogoutAll)
+		}
+
+		// ユーザー関連（認証と権限が必要）
+		users := api.Group("/users")
+		users.Use(authMiddleware.RequireAuth()) // 全てのユーザーエンドポイントで認証が必要
+		{
+			// 一覧取得と詳細取得は全ての認証済みユーザーが可能
 			users.GET("", userHandler.List)
 			users.GET("/:id", userHandler.GetByID)
-			users.POST("", userHandler.Create)
-			users.PUT("/:id", userHandler.Update)
-			users.DELETE("/:id", userHandler.Delete)
+
+			// 作成は admin のみ
+			users.POST("", rbacMiddleware.RequireRole("admin"), userHandler.Create)
+
+			// 更新は admin と manager のみ
+			users.PUT("/:id", rbacMiddleware.RequireAnyRole("admin", "manager"), userHandler.Update)
+
+			// 削除は admin のみ
+			users.DELETE("/:id", rbacMiddleware.RequireRole("admin"), userHandler.Delete)
 		}
 	}
 
