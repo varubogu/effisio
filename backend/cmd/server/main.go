@@ -63,6 +63,7 @@ func main() {
 	permissionRepo := repository.NewPermissionRepository(db)
 	roleRepo := repository.NewRoleRepository(db)
 	auditLogRepo := repository.NewAuditLogRepository(db)
+	organizationRepo := repository.NewOrganizationRepository(db)
 
 	// サービスの初期化
 	userService := service.NewUserService(userRepo, logger)
@@ -70,6 +71,7 @@ func main() {
 	roleService := service.NewRoleService(roleRepo, permissionRepo, logger)
 	auditLogService := service.NewAuditLogService(auditLogRepo, userRepo, logger)
 	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtService, roleService, logger)
+	organizationService := service.NewOrganizationService(organizationRepo, logger)
 
 	// ハンドラーの初期化
 	healthHandler := handler.NewHealthHandler(logger)
@@ -78,13 +80,14 @@ func main() {
 	permissionHandler := handler.NewPermissionHandler(permissionService, logger)
 	roleHandler := handler.NewRoleHandler(roleService, logger)
 	auditLogHandler := handler.NewAuditLogHandler(auditLogService, logger)
+	organizationHandler := handler.NewOrganizationHandler(organizationService, logger)
 
 	// ミドルウェアの初期化
 	authMiddleware := middleware.NewAuthMiddleware(jwtService, logger)
 	rbacMiddleware := middleware.NewRBACMiddleware(logger)
 
 	// Ginルーターの設定
-	router := setupRouter(cfg, logger, healthHandler, userHandler, authHandler, permissionHandler, roleHandler, auditLogHandler, authMiddleware, rbacMiddleware)
+	router := setupRouter(cfg, logger, healthHandler, userHandler, authHandler, permissionHandler, roleHandler, auditLogHandler, organizationHandler, authMiddleware, rbacMiddleware)
 
 	// HTTPサーバーの設定
 	srv := &http.Server{
@@ -172,6 +175,7 @@ func setupRouter(
 	permissionHandler *handler.PermissionHandler,
 	roleHandler *handler.RoleHandler,
 	auditLogHandler *handler.AuditLogHandler,
+	organizationHandler *handler.OrganizationHandler,
 	authMiddleware *middleware.AuthMiddleware,
 	rbacMiddleware *middleware.RBACMiddleware,
 ) *gin.Engine {
@@ -262,6 +266,22 @@ func setupRouter(
 		{
 			auditLogs.GET("", auditLogHandler.List)
 			auditLogs.GET("/:id", auditLogHandler.GetByID)
+		}
+
+		// 組織管理
+		organizations := api.Group("/organizations")
+		organizations.Use(authMiddleware.RequireAuth())
+		{
+			// 一覧、ツリー、詳細取得は全ての認証済みユーザーが可能
+			organizations.GET("", organizationHandler.List)
+			organizations.GET("/tree", organizationHandler.GetTree)
+			organizations.GET("/:id", organizationHandler.GetByID)
+			organizations.GET("/:id/children", organizationHandler.GetChildren)
+
+			// 作成・更新・削除は admin のみ
+			organizations.POST("", rbacMiddleware.RequireRole("admin"), organizationHandler.Create)
+			organizations.PUT("/:id", rbacMiddleware.RequireRole("admin"), organizationHandler.Update)
+			organizations.DELETE("/:id", rbacMiddleware.RequireRole("admin"), organizationHandler.Delete)
 		}
 	}
 
