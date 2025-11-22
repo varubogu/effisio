@@ -13,10 +13,11 @@ import (
 
 // TaskService はタスクのサービスです
 type TaskService struct {
-	repo           repository.TaskRepository
-	userRepo       repository.UserRepository
+	repo             repository.TaskRepository
+	userRepo         repository.UserRepository
 	organizationRepo repository.OrganizationRepository
-	logger         *zap.Logger
+	tagRepo          repository.TagRepository
+	logger           *zap.Logger
 }
 
 // NewTaskService はTaskServiceを作成します
@@ -24,13 +25,15 @@ func NewTaskService(
 	repo repository.TaskRepository,
 	userRepo repository.UserRepository,
 	organizationRepo repository.OrganizationRepository,
+	tagRepo repository.TagRepository,
 	logger *zap.Logger,
 ) *TaskService {
 	return &TaskService{
-		repo:           repo,
-		userRepo:       userRepo,
+		repo:             repo,
+		userRepo:         userRepo,
 		organizationRepo: organizationRepo,
-		logger:         logger,
+		tagRepo:          tagRepo,
+		logger:           logger,
 	}
 }
 
@@ -114,6 +117,22 @@ func (s *TaskService) Create(ctx context.Context, req *model.CreateTaskRequest, 
 		}
 	}
 
+	// タグの存在確認
+	var tags []model.Tag
+	if len(req.TagIDs) > 0 {
+		foundTags, err := s.tagRepo.FindByIDs(ctx, req.TagIDs)
+		if err != nil {
+			s.logger.Error("Failed to find tags", zap.Error(err))
+			return nil, util.NewInternalError(util.ErrCodeDatabaseError, err)
+		}
+		if len(foundTags) != len(req.TagIDs) {
+			return nil, util.NewValidationError("TAG_003", errors.New("some tags not found"))
+		}
+		for _, tag := range foundTags {
+			tags = append(tags, *tag)
+		}
+	}
+
 	// タスクの作成
 	task := &model.Task{
 		Title:          req.Title,
@@ -124,6 +143,7 @@ func (s *TaskService) Create(ctx context.Context, req *model.CreateTaskRequest, 
 		CreatedByID:    createdByID,
 		OrganizationID: req.OrganizationID,
 		DueDate:        req.DueDate,
+		Tags:           tags,
 	}
 
 	// リクエストでステータスが指定されている場合は上書き
@@ -189,6 +209,25 @@ func (s *TaskService) Update(ctx context.Context, id uint, req *model.UpdateTask
 			return nil, util.NewInternalError(util.ErrCodeDatabaseError, err)
 		}
 		task.OrganizationID = req.OrganizationID
+	}
+
+	// タグの更新（指定された場合は既存のタグを全て置き換え）
+	if req.TagIDs != nil {
+		var tags []model.Tag
+		if len(req.TagIDs) > 0 {
+			foundTags, err := s.tagRepo.FindByIDs(ctx, req.TagIDs)
+			if err != nil {
+				s.logger.Error("Failed to find tags", zap.Error(err))
+				return nil, util.NewInternalError(util.ErrCodeDatabaseError, err)
+			}
+			if len(foundTags) != len(req.TagIDs) {
+				return nil, util.NewValidationError("TAG_003", errors.New("some tags not found"))
+			}
+			for _, tag := range foundTags {
+				tags = append(tags, *tag)
+			}
+		}
+		task.Tags = tags
 	}
 
 	// フィールドの更新

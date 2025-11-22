@@ -66,6 +66,7 @@ func main() {
 	organizationRepo := repository.NewOrganizationRepository(db)
 	taskRepo := repository.NewTaskRepository(db)
 	taskCommentRepo := repository.NewTaskCommentRepository(db)
+	tagRepo := repository.NewTagRepository(db)
 
 	// サービスの初期化
 	userService := service.NewUserService(userRepo, logger)
@@ -74,7 +75,8 @@ func main() {
 	auditLogService := service.NewAuditLogService(auditLogRepo, userRepo, logger)
 	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtService, roleService, logger)
 	organizationService := service.NewOrganizationService(organizationRepo, logger)
-	taskService := service.NewTaskService(taskRepo, userRepo, organizationRepo, logger)
+	tagService := service.NewTagService(tagRepo, logger)
+	taskService := service.NewTaskService(taskRepo, userRepo, organizationRepo, tagRepo, logger)
 	taskCommentService := service.NewTaskCommentService(taskCommentRepo, taskRepo, logger)
 
 	// ハンドラーの初期化
@@ -85,6 +87,7 @@ func main() {
 	roleHandler := handler.NewRoleHandler(roleService, logger)
 	auditLogHandler := handler.NewAuditLogHandler(auditLogService, logger)
 	organizationHandler := handler.NewOrganizationHandler(organizationService, logger)
+	tagHandler := handler.NewTagHandler(tagService, logger)
 	taskHandler := handler.NewTaskHandler(taskService, logger)
 	taskCommentHandler := handler.NewTaskCommentHandler(taskCommentService, logger)
 
@@ -93,7 +96,7 @@ func main() {
 	rbacMiddleware := middleware.NewRBACMiddleware(logger)
 
 	// Ginルーターの設定
-	router := setupRouter(cfg, logger, healthHandler, userHandler, authHandler, permissionHandler, roleHandler, auditLogHandler, organizationHandler, taskHandler, taskCommentHandler, authMiddleware, rbacMiddleware)
+	router := setupRouter(cfg, logger, healthHandler, userHandler, authHandler, permissionHandler, roleHandler, auditLogHandler, organizationHandler, tagHandler, taskHandler, taskCommentHandler, authMiddleware, rbacMiddleware)
 
 	// HTTPサーバーの設定
 	srv := &http.Server{
@@ -182,6 +185,7 @@ func setupRouter(
 	roleHandler *handler.RoleHandler,
 	auditLogHandler *handler.AuditLogHandler,
 	organizationHandler *handler.OrganizationHandler,
+	tagHandler *handler.TagHandler,
 	taskHandler *handler.TaskHandler,
 	taskCommentHandler *handler.TaskCommentHandler,
 	authMiddleware *middleware.AuthMiddleware,
@@ -290,6 +294,20 @@ func setupRouter(
 			organizations.POST("", rbacMiddleware.RequireRole("admin"), organizationHandler.Create)
 			organizations.PUT("/:id", rbacMiddleware.RequireRole("admin"), organizationHandler.Update)
 			organizations.DELETE("/:id", rbacMiddleware.RequireRole("admin"), organizationHandler.Delete)
+		}
+
+		// タグ管理
+		tags := api.Group("/tags")
+		tags.Use(authMiddleware.RequireAuth())
+		{
+			// 一覧、詳細取得は全ての認証済みユーザーが可能
+			tags.GET("", tagHandler.List)
+			tags.GET("/:id", tagHandler.GetByID)
+
+			// 作成・更新・削除は admin のみ
+			tags.POST("", rbacMiddleware.RequireRole("admin"), tagHandler.Create)
+			tags.PUT("/:id", rbacMiddleware.RequireRole("admin"), tagHandler.Update)
+			tags.DELETE("/:id", rbacMiddleware.RequireRole("admin"), tagHandler.Delete)
 		}
 
 		// タスク管理

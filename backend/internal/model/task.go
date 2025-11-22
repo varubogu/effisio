@@ -42,6 +42,7 @@ type Task struct {
 	AssignedTo   *User         `gorm:"foreignKey:AssignedToID" json:"assigned_to,omitempty"`
 	CreatedBy    *User         `gorm:"foreignKey:CreatedByID" json:"created_by,omitempty"`
 	Organization *Organization `gorm:"foreignKey:OrganizationID" json:"organization,omitempty"`
+	Tags         []Tag         `gorm:"many2many:task_tags;" json:"tags,omitempty"`
 }
 
 // TableName はテーブル名を指定します
@@ -62,6 +63,7 @@ type TaskResponse struct {
 	CreatedBy      *UserResponse            `json:"created_by,omitempty"`
 	OrganizationID *uint                    `json:"organization_id"`
 	Organization   *OrganizationResponse    `json:"organization,omitempty"`
+	Tags           []TagResponse            `json:"tags,omitempty"`
 	DueDate        *time.Time               `json:"due_date"`
 	CompletedAt    *time.Time               `json:"completed_at"`
 	CreatedAt      time.Time                `json:"created_at"`
@@ -97,6 +99,13 @@ func (t *Task) ToResponse() *TaskResponse {
 		response.Organization = t.Organization.ToResponse()
 	}
 
+	if len(t.Tags) > 0 {
+		response.Tags = make([]TagResponse, len(t.Tags))
+		for i, tag := range t.Tags {
+			response.Tags[i] = *tag.ToResponse()
+		}
+	}
+
 	return response
 }
 
@@ -109,6 +118,7 @@ type CreateTaskRequest struct {
 	AssignedToID   *uint         `json:"assigned_to_id"`
 	OrganizationID *uint         `json:"organization_id"`
 	DueDate        *time.Time    `json:"due_date"`
+	TagIDs         []uint        `json:"tag_ids"`
 }
 
 // UpdateTaskRequest はタスク更新リクエストを表します
@@ -120,6 +130,7 @@ type UpdateTaskRequest struct {
 	AssignedToID   *uint         `json:"assigned_to_id"`
 	OrganizationID *uint         `json:"organization_id"`
 	DueDate        *time.Time    `json:"due_date"`
+	TagIDs         []uint        `json:"tag_ids"`
 }
 
 // TaskFilter はタスクの検索条件を表します
@@ -129,6 +140,7 @@ type TaskFilter struct {
 	AssignedToID   *uint         `form:"assigned_to_id"`
 	CreatedByID    *uint         `form:"created_by_id"`
 	OrganizationID *uint         `form:"organization_id"`
+	TagID          *uint         `form:"tag_id"`
 	DueBefore      *time.Time    `form:"due_before"`
 	DueAfter       *time.Time    `form:"due_after"`
 	Page           int           `form:"page,default=1"`

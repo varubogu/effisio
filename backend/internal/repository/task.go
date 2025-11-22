@@ -52,7 +52,7 @@ func (r *taskRepository) FindAll(ctx context.Context, filter *model.TaskFilter) 
 	}
 
 	// リレーションをプリロード
-	query = query.Preload("AssignedTo").Preload("CreatedBy").Preload("Organization")
+	query = query.Preload("AssignedTo").Preload("CreatedBy").Preload("Organization").Preload("Tags")
 
 	if err := query.Find(&tasks).Error; err != nil {
 		return nil, err
@@ -68,6 +68,7 @@ func (r *taskRepository) FindByID(ctx context.Context, id uint) (*model.Task, er
 		Preload("AssignedTo").
 		Preload("CreatedBy").
 		Preload("Organization").
+		Preload("Tags").
 		First(&task, id).Error; err != nil {
 		return nil, err
 	}
@@ -128,6 +129,11 @@ func (r *taskRepository) applyFilter(query *gorm.DB, filter *model.TaskFilter) *
 
 	if filter.OrganizationID != nil {
 		query = query.Where("organization_id = ?", *filter.OrganizationID)
+	}
+
+	if filter.TagID != nil {
+		query = query.Joins("JOIN task_tags ON tasks.id = task_tags.task_id").
+			Where("task_tags.tag_id = ?", *filter.TagID)
 	}
 
 	if filter.DueBefore != nil {
