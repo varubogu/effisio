@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,6 +22,7 @@ type AuthService struct {
 	refreshTokenRepo *repository.RefreshTokenRepository
 	jwtService       *util.JWTService
 	logger           *zap.Logger
+	auditLogService  *AuditLogService
 }
 
 // NewAuthService は新しいAuthServiceを作成します
@@ -29,12 +31,14 @@ func NewAuthService(
 	refreshTokenRepo *repository.RefreshTokenRepository,
 	jwtService *util.JWTService,
 	logger *zap.Logger,
+	auditLogService *AuditLogService,
 ) *AuthService {
 	return &AuthService{
 		userRepo:         userRepo,
 		refreshTokenRepo: refreshTokenRepo,
 		jwtService:       jwtService,
 		logger:           logger,
+		auditLogService:  auditLogService,
 	}
 }
 
@@ -69,6 +73,18 @@ func (s *AuthService) Login(ctx context.Context, req *LoginRequest) (*LoginRespo
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			s.logger.Warn("Login attempt with invalid username", zap.String("username", req.Username))
+			// 監査ログに失敗を記録（ユーザーが見つからない）
+			if s.auditLogService != nil {
+				auditReq := &model.CreateAuditLogRequest{
+					UserID:       1, // システムユーザー
+					Action:       model.ActionLogin,
+					ResourceType: model.ResourceTypeUser,
+					ResourceID:   req.Username,
+					Status:       model.AuditStatusFailed,
+					ErrorMessage: "User not found",
+				}
+				s.auditLogService.LogAction(ctx, auditReq)
+			}
 			return nil, util.NewUnauthorizedError(util.ErrCodeInvalidCredentials, errors.New("invalid credentials"))
 		}
 		s.logger.Error("Failed to find user", zap.Error(err))
@@ -78,12 +94,36 @@ func (s *AuthService) Login(ctx context.Context, req *LoginRequest) (*LoginRespo
 	// ユーザーのステータスをチェック
 	if user.Status != model.UserStatusActive {
 		s.logger.Warn("Login attempt by inactive user", zap.String("username", req.Username), zap.String("status", user.Status))
+		// 監査ログに失敗を記録（ユーザーが非アクティブ）
+		if s.auditLogService != nil {
+			auditReq := &model.CreateAuditLogRequest{
+				UserID:       user.ID,
+				Action:       model.ActionLogin,
+				ResourceType: model.ResourceTypeUser,
+				ResourceID:   user.Username,
+				Status:       model.AuditStatusFailed,
+				ErrorMessage: "User account is not active",
+			}
+			s.auditLogService.LogAction(ctx, auditReq)
+		}
 		return nil, util.NewForbiddenError(util.ErrCodeInsufficientPermission, errors.New("user account is not active"))
 	}
 
 	// パスワードを検証
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 		s.logger.Warn("Login attempt with invalid password", zap.String("username", req.Username))
+		// 監査ログに失敗を記録（パスワードが不正）
+		if s.auditLogService != nil {
+			auditReq := &model.CreateAuditLogRequest{
+				UserID:       user.ID,
+				Action:       model.ActionLogin,
+				ResourceType: model.ResourceTypeUser,
+				ResourceID:   user.Username,
+				Status:       model.AuditStatusFailed,
+				ErrorMessage: "Invalid password",
+			}
+			s.auditLogService.LogAction(ctx, auditReq)
+		}
 		return nil, util.NewUnauthorizedError(util.ErrCodeInvalidCredentials, errors.New("invalid credentials"))
 	}
 
@@ -126,6 +166,18 @@ func (s *AuthService) Login(ctx context.Context, req *LoginRequest) (*LoginRespo
 	}
 
 	s.logger.Info("User logged in successfully", zap.String("username", user.Username))
+
+	// 監査ログに成功を記録
+	if s.auditLogService != nil {
+		auditReq := &model.CreateAuditLogRequest{
+			UserID:       user.ID,
+			Action:       model.ActionLogin,
+			ResourceType: model.ResourceTypeUser,
+			ResourceID:   user.Username,
+			Status:       model.AuditStatusSuccess,
+		}
+		s.auditLogService.LogAction(ctx, auditReq)
+	}
 
 	return &LoginResponse{
 		AccessToken:  accessToken,
@@ -233,10 +285,35 @@ func (s *AuthService) Logout(ctx context.Context, refreshTokenString string) err
 	// リフレッシュトークンを無効化
 	if err := s.refreshTokenRepo.Revoke(ctx, claims.TokenID); err != nil {
 		s.logger.Error("Failed to revoke refresh token", zap.Error(err))
+		// 監査ログに失敗を記録
+		if s.auditLogService != nil {
+			auditReq := &model.CreateAuditLogRequest{
+				UserID:       claims.UserID,
+				Action:       model.ActionLogout,
+				ResourceType: model.ResourceTypeUser,
+				ResourceID:   fmt.Sprintf("user-%d", claims.UserID),
+				Status:       model.AuditStatusFailed,
+				ErrorMessage: err.Error(),
+			}
+			s.auditLogService.LogAction(ctx, auditReq)
+		}
 		return util.NewInternalError(util.ErrCodeDatabaseError, err)
 	}
 
 	s.logger.Info("User logged out successfully", zap.Uint("user_id", claims.UserID))
+
+	// 監査ログに成功を記録
+	if s.auditLogService != nil {
+		auditReq := &model.CreateAuditLogRequest{
+			UserID:       claims.UserID,
+			Action:       model.ActionLogout,
+			ResourceType: model.ResourceTypeUser,
+			ResourceID:   fmt.Sprintf("user-%d", claims.UserID),
+			Status:       model.AuditStatusSuccess,
+		}
+		s.auditLogService.LogAction(ctx, auditReq)
+	}
+
 	return nil
 }
 
@@ -244,9 +321,34 @@ func (s *AuthService) Logout(ctx context.Context, refreshTokenString string) err
 func (s *AuthService) LogoutAll(ctx context.Context, userID uint) error {
 	if err := s.refreshTokenRepo.RevokeAllByUserID(ctx, userID); err != nil {
 		s.logger.Error("Failed to revoke all refresh tokens", zap.Uint("user_id", userID), zap.Error(err))
+		// 監査ログに失敗を記録
+		if s.auditLogService != nil {
+			auditReq := &model.CreateAuditLogRequest{
+				UserID:       userID,
+				Action:       model.ActionLogout,
+				ResourceType: model.ResourceTypeUser,
+				ResourceID:   fmt.Sprintf("user-%d", userID),
+				Status:       model.AuditStatusFailed,
+				ErrorMessage: err.Error(),
+			}
+			s.auditLogService.LogAction(ctx, auditReq)
+		}
 		return util.NewInternalError(util.ErrCodeDatabaseError, err)
 	}
 
 	s.logger.Info("All sessions logged out", zap.Uint("user_id", userID))
+
+	// 監査ログに成功を記録
+	if s.auditLogService != nil {
+		auditReq := &model.CreateAuditLogRequest{
+			UserID:       userID,
+			Action:       model.ActionLogout,
+			ResourceType: model.ResourceTypeUser,
+			ResourceID:   fmt.Sprintf("user-%d", userID),
+			Status:       model.AuditStatusSuccess,
+		}
+		s.auditLogService.LogAction(ctx, auditReq)
+	}
+
 	return nil
 }

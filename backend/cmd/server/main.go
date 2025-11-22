@@ -60,22 +60,30 @@ func main() {
 	// リポジトリの初期化
 	userRepo := repository.NewUserRepository(db)
 	refreshTokenRepo := repository.NewRefreshTokenRepository(db)
+	auditLogRepo := repository.NewAuditLogRepository(db)
 
 	// サービスの初期化
-	userService := service.NewUserService(userRepo, logger)
-	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtService, logger)
+	// AuditLogServiceは最初に初期化（他のサービスで使用されるため）
+	auditLogService := service.NewAuditLogService(auditLogRepo, logger)
+
+	// 他のサービスの初期化（AuditLogServiceを注入）
+	userService := service.NewUserService(userRepo, logger, auditLogService)
+	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtService, logger, auditLogService)
+	dashboardService := service.NewDashboardService(userRepo, logger)
 
 	// ハンドラーの初期化
 	healthHandler := handler.NewHealthHandler(logger)
 	userHandler := handler.NewUserHandler(userService, logger)
 	authHandler := handler.NewAuthHandler(authService, logger)
+	dashboardHandler := handler.NewDashboardHandler(dashboardService, logger)
+	auditLogHandler := handler.NewAuditLogHandler(auditLogService, logger)
 
 	// ミドルウェアの初期化
 	authMiddleware := middleware.NewAuthMiddleware(jwtService, logger)
 	rbacMiddleware := middleware.NewRBACMiddleware(logger)
 
 	// Ginルーターの設定
-	router := setupRouter(cfg, logger, healthHandler, userHandler, authHandler, authMiddleware, rbacMiddleware)
+	router := setupRouter(cfg, logger, healthHandler, userHandler, authHandler, dashboardHandler, auditLogHandler, authMiddleware, rbacMiddleware)
 
 	// HTTPサーバーの設定
 	srv := &http.Server{
@@ -160,6 +168,8 @@ func setupRouter(
 	healthHandler *handler.HealthHandler,
 	userHandler *handler.UserHandler,
 	authHandler *handler.AuthHandler,
+	dashboardHandler *handler.DashboardHandler,
+	auditLogHandler *handler.AuditLogHandler,
 	authMiddleware *middleware.AuthMiddleware,
 	rbacMiddleware *middleware.RBACMiddleware,
 ) *gin.Engine {
@@ -213,6 +223,33 @@ func setupRouter(
 
 			// 削除は admin のみ
 			users.DELETE("/:id", rbacMiddleware.RequireRole("admin"), userHandler.Delete)
+		}
+
+		// ダッシュボード関連（認証が必要）
+		dashboard := api.Group("/dashboard")
+		dashboard.Use(authMiddleware.RequireAuth()) // 全てのダッシュボードエンドポイントで認証が必要
+		{
+			dashboard.GET("/overview", dashboardHandler.Overview)
+		}
+
+		// 監査ログ関連（認証が必要、admin のみ）
+		auditLogs := api.Group("/audit-logs")
+		auditLogs.Use(authMiddleware.RequireAuth()) // 全ての監査ログエンドポイントで認証が必要
+		{
+			// 一覧取得は全ての認証済みユーザーが可能
+			auditLogs.GET("", auditLogHandler.List)
+			auditLogs.GET("/:id", auditLogHandler.GetByID)
+			auditLogs.GET("/user/:user_id", auditLogHandler.ListByUserID)
+			auditLogs.GET("/resource", auditLogHandler.ListByResource)
+			auditLogs.GET("/action", auditLogHandler.ListByAction)
+			auditLogs.GET("/date-range", auditLogHandler.ListByDateRange)
+			auditLogs.GET("/statistics", auditLogHandler.GetStatistics)
+
+			// 作成（内部使用）
+			auditLogs.POST("", auditLogHandler.Create)
+
+			// 削除（admin のみ）
+			auditLogs.DELETE("/delete-old", rbacMiddleware.RequireRole("admin"), auditLogHandler.DeleteOldLogs)
 		}
 	}
 

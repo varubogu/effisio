@@ -15,15 +15,17 @@ import (
 
 // UserService はユーザー関連のビジネスロジックを提供します
 type UserService struct {
-	repo   *repository.UserRepository
-	logger *zap.Logger
+	repo              *repository.UserRepository
+	logger            *zap.Logger
+	auditLogService   *AuditLogService
 }
 
 // NewUserService は新しいUserServiceを作成します
-func NewUserService(repo *repository.UserRepository, logger *zap.Logger) *UserService {
+func NewUserService(repo *repository.UserRepository, logger *zap.Logger, auditLogService *AuditLogService) *UserService {
 	return &UserService{
-		repo:   repo,
-		logger: logger,
+		repo:              repo,
+		logger:            logger,
+		auditLogService:   auditLogService,
 	}
 }
 
@@ -100,10 +102,47 @@ func (s *UserService) Create(ctx context.Context, req *model.CreateUserRequest) 
 	// データベースに保存
 	if err := s.repo.Create(ctx, user); err != nil {
 		s.logger.Error("Failed to create user", zap.Error(err))
+		// 監査ログに失敗を記録
+		if s.auditLogService != nil {
+			auditReq := &model.CreateAuditLogRequest{
+				UserID:       1, // システムユーザー（実装時に認証ユーザーから取得）
+				Action:       model.ActionCreate,
+				ResourceType: model.ResourceTypeUser,
+				ResourceID:   req.Username,
+				Status:       model.AuditStatusFailed,
+				ErrorMessage: err.Error(),
+			}
+			s.auditLogService.LogAction(ctx, auditReq)
+		}
 		return nil, util.NewInternalError(util.ErrCodeDatabaseError, err)
 	}
 
 	s.logger.Info("User created", zap.Uint("id", user.ID), zap.String("username", user.Username))
+
+	// 監査ログに成功を記録
+	if s.auditLogService != nil {
+		auditReq := &model.CreateAuditLogRequest{
+			UserID:       1, // システムユーザー（実装時に認証ユーザーから取得）
+			Action:       model.ActionCreate,
+			ResourceType: model.ResourceTypeUser,
+			ResourceID:   user.Username,
+			Changes: model.AuditLogChanges{
+				Before: map[string]interface{}{},
+				After: map[string]interface{}{
+					"id":         user.ID,
+					"username":   user.Username,
+					"email":      user.Email,
+					"full_name":  user.FullName,
+					"department": user.Department,
+					"role":       user.Role,
+					"status":     user.Status,
+				},
+			},
+			Status: model.AuditStatusSuccess,
+		}
+		s.auditLogService.LogAction(ctx, auditReq)
+	}
+
 	return user.ToResponse(), nil
 }
 
@@ -117,6 +156,15 @@ func (s *UserService) Update(ctx context.Context, id uint, req *model.UpdateUser
 		}
 		s.logger.Error("Failed to fetch user", zap.Uint("id", id), zap.Error(err))
 		return nil, util.NewInternalError(util.ErrCodeDatabaseError, err)
+	}
+
+	// 監査ログ用に更新前の値を保存
+	beforeChanges := map[string]interface{}{
+		"email":      user.Email,
+		"full_name":  user.FullName,
+		"department": user.Department,
+		"role":       user.Role,
+		"status":     user.Status,
 	}
 
 	// 更新データを適用
@@ -141,20 +189,58 @@ func (s *UserService) Update(ctx context.Context, id uint, req *model.UpdateUser
 		user.Status = *req.Status
 	}
 
+	// 監査ログ用に更新後の値を保存
+	afterChanges := map[string]interface{}{
+		"email":      user.Email,
+		"full_name":  user.FullName,
+		"department": user.Department,
+		"role":       user.Role,
+		"status":     user.Status,
+	}
+
 	// データベースを更新
 	if err := s.repo.Update(ctx, user); err != nil {
 		s.logger.Error("Failed to update user", zap.Uint("id", id), zap.Error(err))
+		// 監査ログに失敗を記録
+		if s.auditLogService != nil {
+			auditReq := &model.CreateAuditLogRequest{
+				UserID:       1, // システムユーザー（実装時に認証ユーザーから取得）
+				Action:       model.ActionUpdate,
+				ResourceType: model.ResourceTypeUser,
+				ResourceID:   user.Username,
+				Status:       model.AuditStatusFailed,
+				ErrorMessage: err.Error(),
+			}
+			s.auditLogService.LogAction(ctx, auditReq)
+		}
 		return nil, util.NewInternalError(util.ErrCodeDatabaseError, err)
 	}
 
 	s.logger.Info("User updated", zap.Uint("id", user.ID))
+
+	// 監査ログに成功を記録
+	if s.auditLogService != nil {
+		auditReq := &model.CreateAuditLogRequest{
+			UserID:       1, // システムユーザー（実装時に認証ユーザーから取得）
+			Action:       model.ActionUpdate,
+			ResourceType: model.ResourceTypeUser,
+			ResourceID:   user.Username,
+			Changes: model.AuditLogChanges{
+				Before: beforeChanges,
+				After:  afterChanges,
+			},
+			Status: model.AuditStatusSuccess,
+		}
+		s.auditLogService.LogAction(ctx, auditReq)
+	}
+
 	return user.ToResponse(), nil
 }
 
 // Delete はユーザーを削除します（ソフトデリート）
 func (s *UserService) Delete(ctx context.Context, id uint) error {
 	// 存在確認
-	_, err := s.repo.FindByID(ctx, id)
+	user, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return util.NewNotFoundError(util.ErrCodeUserNotFound, err)
@@ -166,9 +252,46 @@ func (s *UserService) Delete(ctx context.Context, id uint) error {
 	// 削除実行
 	if err := s.repo.Delete(ctx, id); err != nil {
 		s.logger.Error("Failed to delete user", zap.Uint("id", id), zap.Error(err))
+		// 監査ログに失敗を記録
+		if s.auditLogService != nil {
+			auditReq := &model.CreateAuditLogRequest{
+				UserID:       1, // システムユーザー（実装時に認証ユーザーから取得）
+				Action:       model.ActionDelete,
+				ResourceType: model.ResourceTypeUser,
+				ResourceID:   user.Username,
+				Status:       model.AuditStatusFailed,
+				ErrorMessage: err.Error(),
+			}
+			s.auditLogService.LogAction(ctx, auditReq)
+		}
 		return util.NewInternalError(util.ErrCodeDatabaseError, err)
 	}
 
 	s.logger.Info("User deleted", zap.Uint("id", id))
+
+	// 監査ログに成功を記録
+	if s.auditLogService != nil {
+		auditReq := &model.CreateAuditLogRequest{
+			UserID:       1, // システムユーザー（実装時に認証ユーザーから取得）
+			Action:       model.ActionDelete,
+			ResourceType: model.ResourceTypeUser,
+			ResourceID:   user.Username,
+			Changes: model.AuditLogChanges{
+				Before: map[string]interface{}{
+					"id":         user.ID,
+					"username":   user.Username,
+					"email":      user.Email,
+					"full_name":  user.FullName,
+					"department": user.Department,
+					"role":       user.Role,
+					"status":     user.Status,
+				},
+				After: map[string]interface{}{},
+			},
+			Status: model.AuditStatusSuccess,
+		}
+		s.auditLogService.LogAction(ctx, auditReq)
+	}
+
 	return nil
 }

@@ -100,3 +100,89 @@ func (r *UserRepository) ExistsByUsername(ctx context.Context, username string) 
 	}
 	return count > 0, nil
 }
+
+// CountAll は全ユーザー数を取得します
+func (r *UserRepository) CountAll(ctx context.Context) (int64, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).Model(&model.User{}).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// CountByStatus はステータス別ユーザー数を取得します
+func (r *UserRepository) CountByStatus(ctx context.Context, status string) (int64, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).Model(&model.User{}).Where("status = ?", status).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// CountByRole はロール別ユーザー数を取得します
+func (r *UserRepository) CountByRole(ctx context.Context) (map[string]int64, error) {
+	var results []struct {
+		Role  string
+		Count int64
+	}
+
+	if err := r.db.WithContext(ctx).
+		Model(&model.User{}).
+		Select("role, COUNT(*) as count").
+		Group("role").
+		Scan(&results).Error; err != nil {
+		return nil, err
+	}
+
+	roleCount := make(map[string]int64)
+	for _, result := range results {
+		roleCount[result.Role] = result.Count
+	}
+
+	return roleCount, nil
+}
+
+// CountByDepartment は部門別ユーザー数を取得します
+func (r *UserRepository) CountByDepartment(ctx context.Context) ([]struct {
+	Department string
+	Count      int64
+}, error) {
+	var results []struct {
+		Department string
+		Count      int64
+	}
+
+	if err := r.db.WithContext(ctx).
+		Model(&model.User{}).
+		Select("COALESCE(department, '未設定') as department, COUNT(*) as count").
+		Group("department").
+		Order("count DESC").
+		Scan(&results).Error; err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
+// GetLastLoginStats は過去N日間のログイン統計を取得します
+func (r *UserRepository) GetLastLoginStats(ctx context.Context, days int) ([]struct {
+	Date  string
+	Count int64
+}, error) {
+	var results []struct {
+		Date  string
+		Count int64
+	}
+
+	if err := r.db.WithContext(ctx).
+		Model(&model.User{}).
+		Select("DATE(last_login) as date, COUNT(*) as count").
+		Where("last_login IS NOT NULL AND last_login >= NOW() - INTERVAL '?' DAY", days).
+		Group("DATE(last_login)").
+		Order("date DESC").
+		Scan(&results).Error; err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}

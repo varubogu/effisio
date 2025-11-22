@@ -1,3 +1,10 @@
+'use client';
+
+import Link from 'next/link';
+import { useState } from 'react';
+
+import { useDeleteUser } from '@/hooks/useUsers';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import type { User } from '@/types/user';
 
 interface UserListProps {
@@ -5,6 +12,27 @@ interface UserListProps {
 }
 
 export function UserList({ users }: UserListProps) {
+  const [deleteUserId, setDeleteUserId] = useState<number | null>(null);
+  const deleteUserMutation = useDeleteUser();
+
+  const handleDeleteClick = (userId: number) => {
+    setDeleteUserId(userId);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (deleteUserId === null) return;
+
+    try {
+      await deleteUserMutation.mutateAsync(deleteUserId);
+      setDeleteUserId(null);
+    } catch (error) {
+      console.error('ユーザー削除失敗:', error);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteUserId(null);
+  };
   if (users.length === 0) {
     return (
       <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
@@ -41,6 +69,9 @@ export function UserList({ users }: UserListProps) {
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
               最終ログイン
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              アクション
             </th>
           </tr>
         </thead>
@@ -99,10 +130,45 @@ export function UserList({ users }: UserListProps) {
                   ? new Date(user.last_login).toLocaleString('ja-JP')
                   : '未ログイン'}
               </td>
+              <td className="whitespace-nowrap px-6 py-4 text-sm">
+                <div className="flex space-x-2">
+                  <Link
+                    href={`/users/${user.id}`}
+                    className="text-blue-600 hover:text-blue-800"
+                  >
+                    詳細
+                  </Link>
+                  <Link
+                    href={`/users/${user.id}/edit`}
+                    className="text-gray-600 hover:text-gray-800"
+                  >
+                    編集
+                  </Link>
+                  <button
+                    onClick={() => handleDeleteClick(user.id)}
+                    className="text-red-600 hover:text-red-800"
+                  >
+                    削除
+                  </button>
+                </div>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+
+      {/* 削除確認ダイアログ */}
+      <ConfirmDialog
+        isOpen={deleteUserId !== null}
+        title="ユーザーを削除しますか？"
+        message="このユーザーを削除すると、関連するすべてのデータも削除されます。この操作は元に戻せません。"
+        confirmText="削除"
+        cancelText="キャンセル"
+        isDangerous
+        isLoading={deleteUserMutation.isPending}
+        onConfirm={handleDeleteConfirm}
+        onCancel={handleDeleteCancel}
+      />
     </div>
   );
 }
