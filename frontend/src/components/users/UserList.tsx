@@ -25,6 +25,12 @@ export function UserList({ users }: UserListProps) {
               ユーザー名
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              氏名
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              部署
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
               メールアドレス
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
@@ -34,7 +40,7 @@ export function UserList({ users }: UserListProps) {
               ステータス
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-              作成日時
+              最終ログイン
             </th>
           </tr>
         </thead>
@@ -46,6 +52,12 @@ export function UserList({ users }: UserListProps) {
               </td>
               <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">
                 {user.username}
+              </td>
+              <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                {user.full_name || '-'}
+              </td>
+              <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                {user.department || '-'}
               </td>
               <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
                 {user.email}
@@ -68,16 +80,24 @@ export function UserList({ users }: UserListProps) {
               <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
                 <span
                   className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
-                    user.is_active
+                    user.status === 'active'
                       ? 'bg-green-100 text-green-800'
-                      : 'bg-red-100 text-red-800'
+                      : user.status === 'inactive'
+                        ? 'bg-gray-100 text-gray-800'
+                        : 'bg-red-100 text-red-800'
                   }`}
                 >
-                  {user.is_active ? 'アクティブ' : '無効'}
+                  {user.status === 'active'
+                    ? 'アクティブ'
+                    : user.status === 'inactive'
+                      ? '非アクティブ'
+                      : '停止中'}
                 </span>
               </td>
               <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                {new Date(user.created_at).toLocaleDateString('ja-JP')}
+                {user.last_login
+                  ? new Date(user.last_login).toLocaleString('ja-JP')
+                  : '未ログイン'}
               </td>
             </tr>
           ))}

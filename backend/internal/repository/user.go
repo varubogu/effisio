@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/varubogu/effisio/backend/internal/model"
+	"github.com/varubogu/effisio/backend/pkg/util"
 )
 
 // UserRepository はユーザーデータアクセスを提供します
@@ -20,13 +21,24 @@ func NewUserRepository(db *gorm.DB) *UserRepository {
 	}
 }
 
-// FindAll は全てのユーザーを取得します
-func (r *UserRepository) FindAll(ctx context.Context) ([]*model.User, error) {
+// FindAll は全てのユーザーを取得します（ページネーション付き）
+func (r *UserRepository) FindAll(ctx context.Context, params *util.PaginationParams) ([]*model.User, int64, error) {
 	var users []*model.User
-	if err := r.db.WithContext(ctx).Find(&users).Error; err != nil {
-		return nil, err
+	var total int64
+
+	// 総件数を取得
+	if err := r.db.WithContext(ctx).Model(&model.User{}).Count(&total).Error; err != nil {
+		return nil, 0, err
 	}
-	return users, nil
+
+	// ページネーション付きで取得
+	err := r.db.WithContext(ctx).
+		Offset(params.Offset).
+		Limit(params.PerPage).
+		Order("id ASC").
+		Find(&users).Error
+
+	return users, total, err
 }
 
 // FindByID はIDでユーザーを取得します
@@ -71,10 +83,19 @@ func (r *UserRepository) Delete(ctx context.Context, id uint) error {
 	return r.db.WithContext(ctx).Delete(&model.User{}, id).Error
 }
 
-// Exists はユーザーが存在するかチェックします
-func (r *UserRepository) Exists(ctx context.Context, id uint) (bool, error) {
+// ExistsByEmail はメールアドレスの存在確認をします
+func (r *UserRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	var count int64
-	if err := r.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", id).Count(&count).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&model.User{}).Where("email = ?", email).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// ExistsByUsername はユーザー名の存在確認をします
+func (r *UserRepository) ExistsByUsername(ctx context.Context, username string) (bool, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).Model(&model.User{}).Where("username = ?", username).Count(&count).Error; err != nil {
 		return false, err
 	}
 	return count > 0, nil

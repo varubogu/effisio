@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -9,6 +8,7 @@ import (
 
 	"github.com/varubogu/effisio/backend/internal/model"
 	"github.com/varubogu/effisio/backend/internal/service"
+	"github.com/varubogu/effisio/backend/pkg/util"
 )
 
 // UserHandler はユーザー関連のハンドラーです
@@ -26,90 +26,123 @@ func NewUserHandler(service *service.UserService, logger *zap.Logger) *UserHandl
 }
 
 // List はユーザー一覧を取得します
+// @Summary ユーザー一覧取得
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param page query int false "ページ番号" default(1)
+// @Param per_page query int false "1ページあたりの件数" default(10)
+// @Success 200 {object} util.PaginatedResponse
+// @Router /api/v1/users [get]
 func (h *UserHandler) List(c *gin.Context) {
-	users, err := h.service.List(c.Request.Context())
+	params := util.GetPaginationParams(c)
+	result, err := h.service.List(c.Request.Context(), params)
 	if err != nil {
-		h.logger.Error("Failed to list users", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch users"})
+		util.HandleError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"users": users})
+	util.Paginated(c, result)
 }
 
 // GetByID はIDでユーザーを取得します
+// @Summary ユーザー詳細取得
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param id path int true "ユーザーID"
+// @Success 200 {object} model.UserResponse
+// @Router /api/v1/users/{id} [get]
 func (h *UserHandler) GetByID(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		util.Error(c, 400, util.ErrCodeInvalidParameter, "Invalid user ID", nil)
 		return
 	}
 
 	user, err := h.service.GetByID(c.Request.Context(), uint(id))
 	if err != nil {
-		h.logger.Error("Failed to get user", zap.Error(err), zap.Uint("id", uint(id)))
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		util.HandleError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"user": user})
+	util.Success(c, gin.H{"user": user})
 }
 
 // Create は新しいユーザーを作成します
+// @Summary ユーザー作成
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param request body model.CreateUserRequest true "ユーザー作成リクエスト"
+// @Success 201 {object} model.UserResponse
+// @Router /api/v1/users [post]
 func (h *UserHandler) Create(c *gin.Context) {
 	var req model.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		util.ValidationError(c, util.ParseValidationErrors(err))
 		return
 	}
 
 	user, err := h.service.Create(c.Request.Context(), &req)
 	if err != nil {
-		h.logger.Error("Failed to create user", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+		util.HandleError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"user": user})
+	util.Created(c, gin.H{"user": user})
 }
 
 // Update はユーザー情報を更新します
+// @Summary ユーザー更新
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param id path int true "ユーザーID"
+// @Param request body model.UpdateUserRequest true "ユーザー更新リクエスト"
+// @Success 200 {object} model.UserResponse
+// @Router /api/v1/users/{id} [put]
 func (h *UserHandler) Update(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		util.Error(c, 400, util.ErrCodeInvalidParameter, "Invalid user ID", nil)
 		return
 	}
 
 	var req model.UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		util.ValidationError(c, util.ParseValidationErrors(err))
 		return
 	}
 
 	user, err := h.service.Update(c.Request.Context(), uint(id), &req)
 	if err != nil {
-		h.logger.Error("Failed to update user", zap.Error(err), zap.Uint("id", uint(id)))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+		util.HandleError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"user": user})
+	util.Success(c, gin.H{"user": user})
 }
 
 // Delete はユーザーを削除します
+// @Summary ユーザー削除
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param id path int true "ユーザーID"
+// @Success 204
+// @Router /api/v1/users/{id} [delete]
 func (h *UserHandler) Delete(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		util.Error(c, 400, util.ErrCodeInvalidParameter, "Invalid user ID", nil)
 		return
 	}
 
 	if err := h.service.Delete(c.Request.Context(), uint(id)); err != nil {
-		h.logger.Error("Failed to delete user", zap.Error(err), zap.Uint("id", uint(id)))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
+		util.HandleError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
+	util.NoContent(c)
 }

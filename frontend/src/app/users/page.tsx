@@ -4,7 +4,7 @@ import { useUsers } from '@/hooks/useUsers';
 import { UserList } from '@/components/users/UserList';
 
 export default function UsersPage() {
-  const { data: users, isLoading, error } = useUsers();
+  const { data, isLoading, error } = useUsers();
 
   if (isLoading) {
     return (
@@ -35,9 +35,14 @@ export default function UsersPage() {
         <p className="mt-2 text-gray-600">
           システムに登録されているユーザーの一覧
         </p>
+        {data && data.pagination && (
+          <p className="mt-1 text-sm text-gray-500">
+            全{data.pagination.total}件中 {data.data.length}件を表示
+          </p>
+        )}
       </div>
 
-      <UserList users={users || []} />
+      <UserList users={data?.data || []} />
     </div>
   );
 }

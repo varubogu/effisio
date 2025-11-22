@@ -4,11 +4,11 @@ import type { CreateUserRequest, UpdateUserRequest } from '@/types/user';
 
 const USERS_QUERY_KEY = ['users'];
 
-// ユーザー一覧を取得
-export function useUsers() {
+// ユーザー一覧を取得（ページネーション付き）
+export function useUsers(page = 1, perPage = 10) {
   return useQuery({
-    queryKey: USERS_QUERY_KEY,
-    queryFn: usersApi.getUsers,
+    queryKey: [...USERS_QUERY_KEY, page, perPage],
+    queryFn: () => usersApi.getUsers(page, perPage),
   });
 }
 
@@ -40,8 +40,9 @@ export function useUpdateUser() {
   return useMutation({
     mutationFn: ({ id, data }: { id: number; data: UpdateUserRequest }) =>
       usersApi.updateUser(id, data),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: USERS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: [...USERS_QUERY_KEY, variables.id] });
     },
   });
 }
