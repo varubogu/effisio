@@ -1,3 +1,7 @@
+'use client';
+
+import Link from 'next/link';
+
 import type { User } from '@/types/user';
 
 interface UserListProps {
@@ -41,6 +45,9 @@ export function UserList({ users }: UserListProps) {
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
               最終ログイン
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              アクション
             </th>
           </tr>
         </thead>
@@ -98,6 +105,22 @@ export function UserList({ users }: UserListProps) {
                 {user.last_login
                   ? new Date(user.last_login).toLocaleString('ja-JP')
                   : '未ログイン'}
+              </td>
+              <td className="whitespace-nowrap px-6 py-4 text-sm">
+                <div className="flex space-x-2">
+                  <Link
+                    href={`/users/${user.id}`}
+                    className="text-blue-600 hover:text-blue-800"
+                  >
+                    詳細
+                  </Link>
+                  <button className="text-gray-600 hover:text-gray-800">
+                    編集
+                  </button>
+                  <button className="text-red-600 hover:text-red-800">
+                    削除
+                  </button>
+                </div>
               </td>
             </tr>
           ))}
