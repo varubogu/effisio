@@ -62,26 +62,29 @@ func main() {
 	refreshTokenRepo := repository.NewRefreshTokenRepository(db)
 	permissionRepo := repository.NewPermissionRepository(db)
 	roleRepo := repository.NewRoleRepository(db)
+	auditLogRepo := repository.NewAuditLogRepository(db)
 
 	// サービスの初期化
 	userService := service.NewUserService(userRepo, logger)
 	permissionService := service.NewPermissionService(permissionRepo, logger)
 	roleService := service.NewRoleService(roleRepo, permissionRepo, logger)
+	auditLogService := service.NewAuditLogService(auditLogRepo, userRepo, logger)
 	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtService, roleService, logger)
 
 	// ハンドラーの初期化
 	healthHandler := handler.NewHealthHandler(logger)
-	userHandler := handler.NewUserHandler(userService, logger)
-	authHandler := handler.NewAuthHandler(authService, logger)
+	userHandler := handler.NewUserHandler(userService, auditLogService, logger)
+	authHandler := handler.NewAuthHandler(authService, auditLogService, logger)
 	permissionHandler := handler.NewPermissionHandler(permissionService, logger)
 	roleHandler := handler.NewRoleHandler(roleService, logger)
+	auditLogHandler := handler.NewAuditLogHandler(auditLogService, logger)
 
 	// ミドルウェアの初期化
 	authMiddleware := middleware.NewAuthMiddleware(jwtService, logger)
 	rbacMiddleware := middleware.NewRBACMiddleware(logger)
 
 	// Ginルーターの設定
-	router := setupRouter(cfg, logger, healthHandler, userHandler, authHandler, permissionHandler, roleHandler, authMiddleware, rbacMiddleware)
+	router := setupRouter(cfg, logger, healthHandler, userHandler, authHandler, permissionHandler, roleHandler, auditLogHandler, authMiddleware, rbacMiddleware)
 
 	// HTTPサーバーの設定
 	srv := &http.Server{
@@ -168,6 +171,7 @@ func setupRouter(
 	authHandler *handler.AuthHandler,
 	permissionHandler *handler.PermissionHandler,
 	roleHandler *handler.RoleHandler,
+	auditLogHandler *handler.AuditLogHandler,
 	authMiddleware *middleware.AuthMiddleware,
 	rbacMiddleware *middleware.RBACMiddleware,
 ) *gin.Engine {
@@ -249,6 +253,15 @@ func setupRouter(
 			roles.POST("", rbacMiddleware.RequirePermission("roles:write"), roleHandler.Create)
 			roles.PUT("/:id", rbacMiddleware.RequirePermission("roles:write"), roleHandler.Update)
 			roles.DELETE("/:id", rbacMiddleware.RequirePermission("roles:write"), roleHandler.Delete)
+		}
+
+		// 監査ログ（audit:read 権限が必要）
+		auditLogs := api.Group("/audit-logs")
+		auditLogs.Use(authMiddleware.RequireAuth())
+		auditLogs.Use(rbacMiddleware.RequirePermission("audit:read"))
+		{
+			auditLogs.GET("", auditLogHandler.List)
+			auditLogs.GET("/:id", auditLogHandler.GetByID)
 		}
 	}
 

@@ -12,15 +12,21 @@ import (
 
 // AuthHandler は認証関連のHTTPハンドラーを提供します
 type AuthHandler struct {
-	authService *service.AuthService
-	logger      *zap.Logger
+	authService     *service.AuthService
+	auditLogService *service.AuditLogService
+	logger          *zap.Logger
 }
 
 // NewAuthHandler は新しいAuthHandlerを作成します
-func NewAuthHandler(authService *service.AuthService, logger *zap.Logger) *AuthHandler {
+func NewAuthHandler(
+	authService *service.AuthService,
+	auditLogService *service.AuditLogService,
+	logger *zap.Logger,
+) *AuthHandler {
 	return &AuthHandler{
-		authService: authService,
-		logger:      logger,
+		authService:     authService,
+		auditLogService: auditLogService,
+		logger:          logger,
 	}
 }
 
@@ -46,9 +52,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	response, err := h.authService.Login(c.Request.Context(), &req)
 	if err != nil {
+		// ログイン失敗を記録
+		h.auditLogService.LogLoginFailed(req.Username, c.ClientIP(), c.Request.UserAgent())
 		util.HandleError(c, err)
 		return
 	}
+
+	// ログイン成功を記録
+	h.auditLogService.LogLoginSuccess(response.User.ID, c.ClientIP(), c.Request.UserAgent())
 
 	util.Success(c, response)
 }
@@ -102,6 +113,11 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	if err := h.authService.Logout(c.Request.Context(), req.RefreshToken); err != nil {
 		util.HandleError(c, err)
 		return
+	}
+
+	// ログアウトを記録（user_idはコンテキストから取得、無ければnull）
+	if userID, exists := c.Get("user_id"); exists {
+		h.auditLogService.LogLogout(userID.(uint), c.ClientIP(), c.Request.UserAgent())
 	}
 
 	util.Success(c, gin.H{"message": "logged out successfully"})

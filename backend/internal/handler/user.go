@@ -13,15 +13,21 @@ import (
 
 // UserHandler はユーザー関連のハンドラーです
 type UserHandler struct {
-	service *service.UserService
-	logger  *zap.Logger
+	service         *service.UserService
+	auditLogService *service.AuditLogService
+	logger          *zap.Logger
 }
 
 // NewUserHandler は新しいUserHandlerを作成します
-func NewUserHandler(service *service.UserService, logger *zap.Logger) *UserHandler {
+func NewUserHandler(
+	service *service.UserService,
+	auditLogService *service.AuditLogService,
+	logger *zap.Logger,
+) *UserHandler {
 	return &UserHandler{
-		service: service,
-		logger:  logger,
+		service:         service,
+		auditLogService: auditLogService,
+		logger:          logger,
 	}
 }
 
@@ -88,6 +94,26 @@ func (h *UserHandler) Create(c *gin.Context) {
 	if err != nil {
 		util.HandleError(c, err)
 		return
+	}
+
+	// ユーザー作成を記録
+	if currentUserID, exists := c.Get("user_id"); exists {
+		uid := currentUserID.(uint)
+		h.auditLogService.LogAsync(&service.LogEntry{
+			UserID:     &uid,
+			Action:     model.ActionUserCreate,
+			Resource:   model.ResourceUser,
+			ResourceID: strconv.Itoa(int(user.ID)),
+			IPAddress:  c.ClientIP(),
+			UserAgent:  c.Request.UserAgent(),
+			Changes: map[string]interface{}{
+				"after": map[string]interface{}{
+					"username": user.Username,
+					"email":    user.Email,
+					"role":     user.Role,
+				},
+			},
+		})
 	}
 
 	util.Created(c, gin.H{"user": user})
