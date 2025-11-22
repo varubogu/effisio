@@ -64,6 +64,7 @@ func main() {
 	roleRepo := repository.NewRoleRepository(db)
 	auditLogRepo := repository.NewAuditLogRepository(db)
 	organizationRepo := repository.NewOrganizationRepository(db)
+	taskRepo := repository.NewTaskRepository(db)
 
 	// サービスの初期化
 	userService := service.NewUserService(userRepo, logger)
@@ -72,6 +73,7 @@ func main() {
 	auditLogService := service.NewAuditLogService(auditLogRepo, userRepo, logger)
 	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtService, roleService, logger)
 	organizationService := service.NewOrganizationService(organizationRepo, logger)
+	taskService := service.NewTaskService(taskRepo, userRepo, organizationRepo, logger)
 
 	// ハンドラーの初期化
 	healthHandler := handler.NewHealthHandler(logger)
@@ -81,13 +83,14 @@ func main() {
 	roleHandler := handler.NewRoleHandler(roleService, logger)
 	auditLogHandler := handler.NewAuditLogHandler(auditLogService, logger)
 	organizationHandler := handler.NewOrganizationHandler(organizationService, logger)
+	taskHandler := handler.NewTaskHandler(taskService, logger)
 
 	// ミドルウェアの初期化
 	authMiddleware := middleware.NewAuthMiddleware(jwtService, logger)
 	rbacMiddleware := middleware.NewRBACMiddleware(logger)
 
 	// Ginルーターの設定
-	router := setupRouter(cfg, logger, healthHandler, userHandler, authHandler, permissionHandler, roleHandler, auditLogHandler, organizationHandler, authMiddleware, rbacMiddleware)
+	router := setupRouter(cfg, logger, healthHandler, userHandler, authHandler, permissionHandler, roleHandler, auditLogHandler, organizationHandler, taskHandler, authMiddleware, rbacMiddleware)
 
 	// HTTPサーバーの設定
 	srv := &http.Server{
@@ -176,6 +179,7 @@ func setupRouter(
 	roleHandler *handler.RoleHandler,
 	auditLogHandler *handler.AuditLogHandler,
 	organizationHandler *handler.OrganizationHandler,
+	taskHandler *handler.TaskHandler,
 	authMiddleware *middleware.AuthMiddleware,
 	rbacMiddleware *middleware.RBACMiddleware,
 ) *gin.Engine {
@@ -282,6 +286,26 @@ func setupRouter(
 			organizations.POST("", rbacMiddleware.RequireRole("admin"), organizationHandler.Create)
 			organizations.PUT("/:id", rbacMiddleware.RequireRole("admin"), organizationHandler.Update)
 			organizations.DELETE("/:id", rbacMiddleware.RequireRole("admin"), organizationHandler.Delete)
+		}
+
+		// タスク管理
+		tasks := api.Group("/tasks")
+		tasks.Use(authMiddleware.RequireAuth())
+		{
+			// 一覧取得と詳細取得は全ての認証済みユーザーが可能
+			tasks.GET("", taskHandler.List)
+			tasks.GET("/:id", taskHandler.GetByID)
+
+			// 作成は全ての認証済みユーザーが可能
+			tasks.POST("", taskHandler.Create)
+
+			// 更新・削除は作成者または admin のみ（ビジネスロジックはサービス層で実装）
+			tasks.PUT("/:id", taskHandler.Update)
+			tasks.DELETE("/:id", taskHandler.Delete)
+
+			// ステータス更新と割り当ては全ての認証済みユーザーが可能
+			tasks.PATCH("/:id/status", taskHandler.UpdateStatus)
+			tasks.PATCH("/:id/assign", taskHandler.AssignTask)
 		}
 	}
 
