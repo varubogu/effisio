@@ -63,10 +63,13 @@ func main() {
 	auditLogRepo := repository.NewAuditLogRepository(db)
 
 	// サービスの初期化
-	userService := service.NewUserService(userRepo, logger)
-	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtService, logger)
-	dashboardService := service.NewDashboardService(userRepo, logger)
+	// AuditLogServiceは最初に初期化（他のサービスで使用されるため）
 	auditLogService := service.NewAuditLogService(auditLogRepo, logger)
+
+	// 他のサービスの初期化（AuditLogServiceを注入）
+	userService := service.NewUserService(userRepo, logger, auditLogService)
+	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtService, logger, auditLogService)
+	dashboardService := service.NewDashboardService(userRepo, logger)
 
 	// ハンドラーの初期化
 	healthHandler := handler.NewHealthHandler(logger)
