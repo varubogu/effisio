@@ -1,0 +1,55 @@
+# EditorConfig is awesome: https://EditorConfig.org
+
+# トップレベルのEditorConfigファイル
+root = true
+
+# 全てのファイルに適用されるデフォルト設定
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Go ファイル
+[*.go]
+indent_style = tab
+indent_size = 4
+
+# Makefile
+[Makefile]
+indent_style = tab
+
+# Markdown ファイル（末尾空白を保持）
+[*.md]
+trim_trailing_whitespace = false
+
+# YAML ファイル
+[*.{yml,yaml}]
+indent_size = 2
+
+# JSON ファイル
+[*.json]
+indent_size = 2
+
+# JavaScript/TypeScript
+[*.{js,jsx,ts,tsx}]
+indent_size = 2
+
+# CSS/SCSS
+[*.{css,scss,sass}]
+indent_size = 2
+
+# Shell スクリプト
+[*.sh]
+indent_size = 2
+end_of_line = lf
+
+# Docker ファイル
+[Dockerfile*]
+indent_size = 2
+
+# SQL ファイル
+[*.sql]
+indent_size = 2
