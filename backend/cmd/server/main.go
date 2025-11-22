@@ -60,22 +60,28 @@ func main() {
 	// リポジトリの初期化
 	userRepo := repository.NewUserRepository(db)
 	refreshTokenRepo := repository.NewRefreshTokenRepository(db)
+	permissionRepo := repository.NewPermissionRepository(db)
+	roleRepo := repository.NewRoleRepository(db)
 
 	// サービスの初期化
 	userService := service.NewUserService(userRepo, logger)
-	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtService, logger)
+	permissionService := service.NewPermissionService(permissionRepo, logger)
+	roleService := service.NewRoleService(roleRepo, permissionRepo, logger)
+	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtService, roleService, logger)
 
 	// ハンドラーの初期化
 	healthHandler := handler.NewHealthHandler(logger)
 	userHandler := handler.NewUserHandler(userService, logger)
 	authHandler := handler.NewAuthHandler(authService, logger)
+	permissionHandler := handler.NewPermissionHandler(permissionService, logger)
+	roleHandler := handler.NewRoleHandler(roleService, logger)
 
 	// ミドルウェアの初期化
 	authMiddleware := middleware.NewAuthMiddleware(jwtService, logger)
 	rbacMiddleware := middleware.NewRBACMiddleware(logger)
 
 	// Ginルーターの設定
-	router := setupRouter(cfg, logger, healthHandler, userHandler, authHandler, authMiddleware, rbacMiddleware)
+	router := setupRouter(cfg, logger, healthHandler, userHandler, authHandler, permissionHandler, roleHandler, authMiddleware, rbacMiddleware)
 
 	// HTTPサーバーの設定
 	srv := &http.Server{
@@ -160,6 +166,8 @@ func setupRouter(
 	healthHandler *handler.HealthHandler,
 	userHandler *handler.UserHandler,
 	authHandler *handler.AuthHandler,
+	permissionHandler *handler.PermissionHandler,
+	roleHandler *handler.RoleHandler,
 	authMiddleware *middleware.AuthMiddleware,
 	rbacMiddleware *middleware.RBACMiddleware,
 ) *gin.Engine {
@@ -213,6 +221,34 @@ func setupRouter(
 
 			// 削除は admin のみ
 			users.DELETE("/:id", rbacMiddleware.RequireRole("admin"), userHandler.Delete)
+		}
+
+		// 権限管理（admin のみ）
+		permissions := api.Group("/permissions")
+		permissions.Use(authMiddleware.RequireAuth())
+		permissions.Use(rbacMiddleware.RequirePermission("permissions:read"))
+		{
+			permissions.GET("", permissionHandler.List)
+			permissions.GET("/:id", permissionHandler.GetByID)
+
+			// 作成・更新・削除は permissions:write が必要
+			permissions.POST("", rbacMiddleware.RequirePermission("permissions:write"), permissionHandler.Create)
+			permissions.PUT("/:id", rbacMiddleware.RequirePermission("permissions:write"), permissionHandler.Update)
+			permissions.DELETE("/:id", rbacMiddleware.RequirePermission("permissions:write"), permissionHandler.Delete)
+		}
+
+		// ロール管理（admin のみ）
+		roles := api.Group("/roles")
+		roles.Use(authMiddleware.RequireAuth())
+		roles.Use(rbacMiddleware.RequirePermission("roles:read"))
+		{
+			roles.GET("", roleHandler.List)
+			roles.GET("/:id", roleHandler.GetByID)
+
+			// 作成・更新・削除は roles:write が必要
+			roles.POST("", rbacMiddleware.RequirePermission("roles:write"), roleHandler.Create)
+			roles.PUT("/:id", rbacMiddleware.RequirePermission("roles:write"), roleHandler.Update)
+			roles.DELETE("/:id", rbacMiddleware.RequirePermission("roles:write"), roleHandler.Delete)
 		}
 	}
 

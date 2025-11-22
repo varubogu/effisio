@@ -20,6 +20,7 @@ type AuthService struct {
 	userRepo         *repository.UserRepository
 	refreshTokenRepo *repository.RefreshTokenRepository
 	jwtService       *util.JWTService
+	roleService      *RoleService
 	logger           *zap.Logger
 }
 
@@ -28,12 +29,14 @@ func NewAuthService(
 	userRepo *repository.UserRepository,
 	refreshTokenRepo *repository.RefreshTokenRepository,
 	jwtService *util.JWTService,
+	roleService *RoleService,
 	logger *zap.Logger,
 ) *AuthService {
 	return &AuthService{
 		userRepo:         userRepo,
 		refreshTokenRepo: refreshTokenRepo,
 		jwtService:       jwtService,
+		roleService:      roleService,
 		logger:           logger,
 	}
 }
@@ -87,8 +90,13 @@ func (s *AuthService) Login(ctx context.Context, req *LoginRequest) (*LoginRespo
 		return nil, util.NewUnauthorizedError(util.ErrCodeInvalidCredentials, errors.New("invalid credentials"))
 	}
 
-	// 権限リストを取得
-	permissions := util.GetPermissionsForRole(user.Role)
+	// 権限リストをDBから取得
+	permissions, err := s.roleService.GetPermissionsForRole(ctx, user.Role)
+	if err != nil {
+		s.logger.Error("Failed to get permissions for role", zap.Error(err), zap.String("role", user.Role))
+		// エラーの場合は空の権限リストでトークンを生成
+		permissions = []string{}
+	}
 
 	// アクセストークンを生成
 	accessToken, err := s.jwtService.GenerateAccessToken(user.ID, user.Username, user.Role, permissions)
@@ -176,8 +184,13 @@ func (s *AuthService) RefreshToken(ctx context.Context, req *RefreshTokenRequest
 		return nil, util.NewForbiddenError(util.ErrCodeInsufficientPermission, errors.New("user account is not active"))
 	}
 
-	// 権限リストを取得
-	permissions := util.GetPermissionsForRole(user.Role)
+	// 権限リストをDBから取得
+	permissions, err := s.roleService.GetPermissionsForRole(ctx, user.Role)
+	if err != nil {
+		s.logger.Error("Failed to get permissions for role", zap.Error(err), zap.String("role", user.Role))
+		// エラーの場合は空の権限リストでトークンを生成
+		permissions = []string{}
+	}
 
 	// 新しいアクセストークンを生成
 	newAccessToken, err := s.jwtService.GenerateAccessToken(user.ID, user.Username, user.Role, permissions)
