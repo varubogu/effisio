@@ -1,37 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
 
-interface DashboardStats {
-  total_users: number;
-  active_users: number;
-}
+import { useDashboardOverview } from '@/hooks/useDashboard';
+import { Alert } from '@/components/ui/Alert';
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string>('');
-
-  useEffect(() => {
-    try {
-      // ダミーデータを使用（バックエンド実装待ち）
-      const mockStats: DashboardStats = {
-        total_users: 42,
-        active_users: 38,
-      };
-      setStats(mockStats);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'ダッシュボードデータの取得に失敗しました';
-      setError(errorMsg);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const { data: overview, isLoading, error } = useDashboardOverview();
 
   if (isLoading) {
     return (
-      <main className="flex min-h-screen items-center justify-center">
+      <main className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="mb-4 inline-block">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600" />
@@ -53,29 +32,88 @@ export default function DashboardPage() {
 
         {/* エラー表示 */}
         {error && (
-          <div className="mb-6 rounded-lg bg-red-50 p-4 text-sm text-red-800">
-            {error}
+          <div className="mb-6">
+            <Alert
+              type="error"
+              title="エラー"
+              message={error instanceof Error ? error.message : 'ダッシュボードの読み込みに失敗しました'}
+            />
           </div>
         )}
 
         {/* 統計情報カード */}
-        <div className="mb-8 grid gap-6 md:grid-cols-2">
+        <div className="mb-8 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           {/* 総ユーザー数 */}
           <div className="rounded-lg bg-white p-6 shadow">
             <h3 className="text-sm font-medium text-gray-600">総ユーザー数</h3>
-            <p className="mt-2 text-3xl font-bold text-gray-900">{stats?.total_users || 0}</p>
+            <p className="mt-2 text-3xl font-bold text-gray-900">
+              {overview?.total_users || 0}
+            </p>
             <p className="mt-1 text-xs text-gray-500">全ユーザー</p>
           </div>
 
           {/* アクティブユーザー数 */}
           <div className="rounded-lg bg-white p-6 shadow">
             <h3 className="text-sm font-medium text-gray-600">アクティブユーザー</h3>
-            <p className="mt-2 text-3xl font-bold text-green-600">{stats?.active_users || 0}</p>
+            <p className="mt-2 text-3xl font-bold text-green-600">
+              {overview?.active_users || 0}
+            </p>
             <p className="mt-1 text-xs text-gray-500">
-              {stats ? Math.round((stats.active_users / stats.total_users) * 100) : 0}% のユーザーがアクティブ
+              {overview
+                ? Math.round((overview.active_users / overview.total_users) * 100)
+                : 0}
+              % がアクティブ
             </p>
           </div>
+
+          {/* 非アクティブユーザー数 */}
+          <div className="rounded-lg bg-white p-6 shadow">
+            <h3 className="text-sm font-medium text-gray-600">非アクティブユーザー</h3>
+            <p className="mt-2 text-3xl font-bold text-gray-600">
+              {overview?.inactive_users || 0}
+            </p>
+            <p className="mt-1 text-xs text-gray-500">未ログイン状態</p>
+          </div>
+
+          {/* 停止中ユーザー数 */}
+          <div className="rounded-lg bg-white p-6 shadow">
+            <h3 className="text-sm font-medium text-gray-600">停止中ユーザー</h3>
+            <p className="mt-2 text-3xl font-bold text-red-600">
+              {overview?.suspended_users || 0}
+            </p>
+            <p className="mt-1 text-xs text-gray-500">アカウント停止</p>
+          </div>
         </div>
+
+        {/* ロール別ユーザー数 */}
+        {overview && overview.users_by_role && (
+          <div className="mb-8 rounded-lg bg-white p-6 shadow">
+            <h2 className="text-lg font-semibold text-gray-900">ロール別ユーザー数</h2>
+            <div className="mt-4 grid gap-4 md:grid-cols-4">
+              {Object.entries(overview.users_by_role).map(([role, count]) => (
+                <div key={role} className="rounded-lg bg-gray-50 p-4">
+                  <p className="text-sm font-medium text-gray-600">{role}</p>
+                  <p className="mt-1 text-2xl font-bold text-gray-900">{count}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 部門別ユーザー数 */}
+        {overview && overview.users_by_department && overview.users_by_department.length > 0 && (
+          <div className="mb-8 rounded-lg bg-white p-6 shadow">
+            <h2 className="text-lg font-semibold text-gray-900">部門別ユーザー数</h2>
+            <div className="mt-4 space-y-2">
+              {overview.users_by_department.map((dept) => (
+                <div key={dept.department} className="flex items-center justify-between border-b border-gray-200 pb-2">
+                  <span className="text-sm text-gray-700">{dept.department}</span>
+                  <span className="font-semibold text-gray-900">{dept.count}人</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* クイックリンク */}
         <div className="mb-8">
@@ -110,7 +148,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* 最近のアクティビティ（ダミー） */}
+        {/* 最近のアクティビティ（監査ログ） */}
         <div>
           <h2 className="mb-4 text-lg font-semibold text-gray-900">最近のアクティビティ</h2>
           <div className="rounded-lg bg-white shadow">

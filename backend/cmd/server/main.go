@@ -64,18 +64,20 @@ func main() {
 	// サービスの初期化
 	userService := service.NewUserService(userRepo, logger)
 	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtService, logger)
+	dashboardService := service.NewDashboardService(userRepo, logger)
 
 	// ハンドラーの初期化
 	healthHandler := handler.NewHealthHandler(logger)
 	userHandler := handler.NewUserHandler(userService, logger)
 	authHandler := handler.NewAuthHandler(authService, logger)
+	dashboardHandler := handler.NewDashboardHandler(dashboardService, logger)
 
 	// ミドルウェアの初期化
 	authMiddleware := middleware.NewAuthMiddleware(jwtService, logger)
 	rbacMiddleware := middleware.NewRBACMiddleware(logger)
 
 	// Ginルーターの設定
-	router := setupRouter(cfg, logger, healthHandler, userHandler, authHandler, authMiddleware, rbacMiddleware)
+	router := setupRouter(cfg, logger, healthHandler, userHandler, authHandler, dashboardHandler, authMiddleware, rbacMiddleware)
 
 	// HTTPサーバーの設定
 	srv := &http.Server{
@@ -160,6 +162,7 @@ func setupRouter(
 	healthHandler *handler.HealthHandler,
 	userHandler *handler.UserHandler,
 	authHandler *handler.AuthHandler,
+	dashboardHandler *handler.DashboardHandler,
 	authMiddleware *middleware.AuthMiddleware,
 	rbacMiddleware *middleware.RBACMiddleware,
 ) *gin.Engine {
@@ -213,6 +216,13 @@ func setupRouter(
 
 			// 削除は admin のみ
 			users.DELETE("/:id", rbacMiddleware.RequireRole("admin"), userHandler.Delete)
+		}
+
+		// ダッシュボード関連（認証が必要）
+		dashboard := api.Group("/dashboard")
+		dashboard.Use(authMiddleware.RequireAuth()) // 全てのダッシュボードエンドポイントで認証が必要
+		{
+			dashboard.GET("/overview", dashboardHandler.Overview)
 		}
 	}
 
