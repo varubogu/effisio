@@ -67,6 +67,7 @@ func main() {
 	taskRepo := repository.NewTaskRepository(db)
 	taskCommentRepo := repository.NewTaskCommentRepository(db)
 	tagRepo := repository.NewTagRepository(db)
+	taskActivityRepo := repository.NewTaskActivityRepository(db)
 
 	// サービスの初期化
 	userService := service.NewUserService(userRepo, logger)
@@ -76,8 +77,9 @@ func main() {
 	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtService, roleService, logger)
 	organizationService := service.NewOrganizationService(organizationRepo, logger)
 	tagService := service.NewTagService(tagRepo, logger)
-	taskService := service.NewTaskService(taskRepo, userRepo, organizationRepo, tagRepo, logger)
-	taskCommentService := service.NewTaskCommentService(taskCommentRepo, taskRepo, logger)
+	taskActivityService := service.NewTaskActivityService(taskActivityRepo, taskRepo, logger)
+	taskService := service.NewTaskService(taskRepo, userRepo, organizationRepo, tagRepo, taskActivityService, logger)
+	taskCommentService := service.NewTaskCommentService(taskCommentRepo, taskRepo, taskActivityService, logger)
 
 	// ハンドラーの初期化
 	healthHandler := handler.NewHealthHandler(logger)
@@ -90,13 +92,14 @@ func main() {
 	tagHandler := handler.NewTagHandler(tagService, logger)
 	taskHandler := handler.NewTaskHandler(taskService, logger)
 	taskCommentHandler := handler.NewTaskCommentHandler(taskCommentService, logger)
+	taskActivityHandler := handler.NewTaskActivityHandler(taskActivityService, logger)
 
 	// ミドルウェアの初期化
 	authMiddleware := middleware.NewAuthMiddleware(jwtService, logger)
 	rbacMiddleware := middleware.NewRBACMiddleware(logger)
 
 	// Ginルーターの設定
-	router := setupRouter(cfg, logger, healthHandler, userHandler, authHandler, permissionHandler, roleHandler, auditLogHandler, organizationHandler, tagHandler, taskHandler, taskCommentHandler, authMiddleware, rbacMiddleware)
+	router := setupRouter(cfg, logger, healthHandler, userHandler, authHandler, permissionHandler, roleHandler, auditLogHandler, organizationHandler, tagHandler, taskHandler, taskCommentHandler, taskActivityHandler, authMiddleware, rbacMiddleware)
 
 	// HTTPサーバーの設定
 	srv := &http.Server{
@@ -188,6 +191,7 @@ func setupRouter(
 	tagHandler *handler.TagHandler,
 	taskHandler *handler.TaskHandler,
 	taskCommentHandler *handler.TaskCommentHandler,
+	taskActivityHandler *handler.TaskActivityHandler,
 	authMiddleware *middleware.AuthMiddleware,
 	rbacMiddleware *middleware.RBACMiddleware,
 ) *gin.Engine {
@@ -335,6 +339,9 @@ func setupRouter(
 			tasks.POST("/:task_id/comments", taskCommentHandler.Create)
 			tasks.PUT("/:task_id/comments/:id", taskCommentHandler.Update)
 			tasks.DELETE("/:task_id/comments/:id", taskCommentHandler.Delete)
+
+			// タスクアクティビティ
+			tasks.GET("/:task_id/activities", taskActivityHandler.ListByTaskID)
 		}
 	}
 

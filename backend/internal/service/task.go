@@ -13,11 +13,12 @@ import (
 
 // TaskService はタスクのサービスです
 type TaskService struct {
-	repo             repository.TaskRepository
-	userRepo         repository.UserRepository
-	organizationRepo repository.OrganizationRepository
-	tagRepo          repository.TagRepository
-	logger           *zap.Logger
+	repo                repository.TaskRepository
+	userRepo            repository.UserRepository
+	organizationRepo    repository.OrganizationRepository
+	tagRepo             repository.TagRepository
+	taskActivityService *TaskActivityService
+	logger              *zap.Logger
 }
 
 // NewTaskService はTaskServiceを作成します
@@ -26,14 +27,16 @@ func NewTaskService(
 	userRepo repository.UserRepository,
 	organizationRepo repository.OrganizationRepository,
 	tagRepo repository.TagRepository,
+	taskActivityService *TaskActivityService,
 	logger *zap.Logger,
 ) *TaskService {
 	return &TaskService{
-		repo:             repo,
-		userRepo:         userRepo,
-		organizationRepo: organizationRepo,
-		tagRepo:          tagRepo,
-		logger:           logger,
+		repo:                repo,
+		userRepo:            userRepo,
+		organizationRepo:    organizationRepo,
+		tagRepo:             tagRepo,
+		taskActivityService: taskActivityService,
+		logger:              logger,
 	}
 }
 
@@ -168,6 +171,12 @@ func (s *TaskService) Create(ctx context.Context, req *model.CreateTaskRequest, 
 		return nil, util.NewInternalError(util.ErrCodeDatabaseError, err)
 	}
 
+	// アクティビティログの記録
+	if err := s.taskActivityService.LogCreated(ctx, task.ID, createdByID); err != nil {
+		s.logger.Error("Failed to log task created activity", zap.Error(err))
+		// アクティビティログの失敗はエラーとして返さない
+	}
+
 	return createdTask.ToResponse(), nil
 }
 
@@ -186,6 +195,9 @@ func (s *TaskService) Update(ctx context.Context, id uint, req *model.UpdateTask
 	// 権限チェック: 作成者のみが更新可能（adminロールは後でミドルウェアで制御）
 	// ここではビジネスロジックとして作成者のチェックのみ行う
 	// 実際にはミドルウェアでadminロールを持つユーザーはこのチェックをスキップする設計も可能
+
+	// 変更前の値を保存（アクティビティログ用）
+	oldTask := *task
 
 	// 担当者の変更がある場合は存在確認
 	if req.AssignedToID != nil {
@@ -263,6 +275,28 @@ func (s *TaskService) Update(ctx context.Context, id uint, req *model.UpdateTask
 		return nil, util.NewInternalError(util.ErrCodeDatabaseError, err)
 	}
 
+	// アクティビティログの記録（各フィールドの変更を記録）
+	if req.Title != nil && oldTask.Title != *req.Title {
+		if err := s.taskActivityService.LogFieldChange(ctx, task.ID, currentUserID, "title", oldTask.Title, *req.Title); err != nil {
+			s.logger.Error("Failed to log title change activity", zap.Error(err))
+		}
+	}
+	if req.Description != nil && oldTask.Description != *req.Description {
+		if err := s.taskActivityService.LogFieldChange(ctx, task.ID, currentUserID, "description", oldTask.Description, *req.Description); err != nil {
+			s.logger.Error("Failed to log description change activity", zap.Error(err))
+		}
+	}
+	if req.Status != nil && oldTask.Status != *req.Status {
+		if err := s.taskActivityService.LogStatusChange(ctx, task.ID, currentUserID, string(oldTask.Status), string(*req.Status)); err != nil {
+			s.logger.Error("Failed to log status change activity", zap.Error(err))
+		}
+	}
+	if req.Priority != nil && oldTask.Priority != *req.Priority {
+		if err := s.taskActivityService.LogFieldChange(ctx, task.ID, currentUserID, "priority", string(oldTask.Priority), string(*req.Priority)); err != nil {
+			s.logger.Error("Failed to log priority change activity", zap.Error(err))
+		}
+	}
+
 	return updatedTask.ToResponse(), nil
 }
 
@@ -301,6 +335,9 @@ func (s *TaskService) UpdateStatus(ctx context.Context, id uint, status model.Ta
 		return nil, util.NewInternalError(util.ErrCodeDatabaseError, err)
 	}
 
+	// 変更前のステータスを保存
+	oldStatus := task.Status
+
 	task.Status = status
 
 	if err := s.repo.Update(ctx, task); err != nil {
@@ -313,6 +350,13 @@ func (s *TaskService) UpdateStatus(ctx context.Context, id uint, status model.Ta
 	if err != nil {
 		s.logger.Error("Failed to find updated task", zap.Error(err))
 		return nil, util.NewInternalError(util.ErrCodeDatabaseError, err)
+	}
+
+	// アクティビティログの記録
+	if oldStatus != status {
+		if err := s.taskActivityService.LogStatusChange(ctx, task.ID, currentUserID, string(oldStatus), string(status)); err != nil {
+			s.logger.Error("Failed to log status change activity", zap.Error(err))
+		}
 	}
 
 	return updatedTask.ToResponse(), nil
@@ -340,6 +384,9 @@ func (s *TaskService) AssignTask(ctx context.Context, id uint, assignedToID *uin
 		}
 	}
 
+	// 変更前の担当者を保存
+	oldAssignedToID := task.AssignedToID
+
 	task.AssignedToID = assignedToID
 
 	if err := s.repo.Update(ctx, task); err != nil {
@@ -352,6 +399,15 @@ func (s *TaskService) AssignTask(ctx context.Context, id uint, assignedToID *uin
 	if err != nil {
 		s.logger.Error("Failed to find updated task", zap.Error(err))
 		return nil, util.NewInternalError(util.ErrCodeDatabaseError, err)
+	}
+
+	// アクティビティログの記録
+	if (oldAssignedToID == nil && assignedToID != nil) ||
+		(oldAssignedToID != nil && assignedToID == nil) ||
+		(oldAssignedToID != nil && assignedToID != nil && *oldAssignedToID != *assignedToID) {
+		if err := s.taskActivityService.LogAssigned(ctx, task.ID, currentUserID, oldAssignedToID, assignedToID); err != nil {
+			s.logger.Error("Failed to log assignment change activity", zap.Error(err))
+		}
 	}
 
 	return updatedTask.ToResponse(), nil

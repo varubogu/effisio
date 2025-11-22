@@ -13,21 +13,24 @@ import (
 
 // TaskCommentService はタスクコメントのサービスです
 type TaskCommentService struct {
-	repo     repository.TaskCommentRepository
-	taskRepo repository.TaskRepository
-	logger   *zap.Logger
+	repo                repository.TaskCommentRepository
+	taskRepo            repository.TaskRepository
+	taskActivityService *TaskActivityService
+	logger              *zap.Logger
 }
 
 // NewTaskCommentService はTaskCommentServiceを作成します
 func NewTaskCommentService(
 	repo repository.TaskCommentRepository,
 	taskRepo repository.TaskRepository,
+	taskActivityService *TaskActivityService,
 	logger *zap.Logger,
 ) *TaskCommentService {
 	return &TaskCommentService{
-		repo:     repo,
-		taskRepo: taskRepo,
-		logger:   logger,
+		repo:                repo,
+		taskRepo:            taskRepo,
+		taskActivityService: taskActivityService,
+		logger:              logger,
 	}
 }
 
@@ -98,6 +101,12 @@ func (s *TaskCommentService) Create(ctx context.Context, taskID uint, req *model
 	if err != nil {
 		s.logger.Error("Failed to find created comment", zap.Error(err))
 		return nil, util.NewInternalError(util.ErrCodeDatabaseError, err)
+	}
+
+	// アクティビティログの記録
+	if err := s.taskActivityService.LogCommented(ctx, taskID, userID, comment.ID); err != nil {
+		s.logger.Error("Failed to log commented activity", zap.Error(err))
+		// アクティビティログの失敗はエラーとして返さない
 	}
 
 	return createdComment.ToResponse(), nil
