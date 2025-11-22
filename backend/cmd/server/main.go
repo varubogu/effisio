@@ -65,6 +65,7 @@ func main() {
 	auditLogRepo := repository.NewAuditLogRepository(db)
 	organizationRepo := repository.NewOrganizationRepository(db)
 	taskRepo := repository.NewTaskRepository(db)
+	taskCommentRepo := repository.NewTaskCommentRepository(db)
 
 	// サービスの初期化
 	userService := service.NewUserService(userRepo, logger)
@@ -74,6 +75,7 @@ func main() {
 	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtService, roleService, logger)
 	organizationService := service.NewOrganizationService(organizationRepo, logger)
 	taskService := service.NewTaskService(taskRepo, userRepo, organizationRepo, logger)
+	taskCommentService := service.NewTaskCommentService(taskCommentRepo, taskRepo, logger)
 
 	// ハンドラーの初期化
 	healthHandler := handler.NewHealthHandler(logger)
@@ -84,13 +86,14 @@ func main() {
 	auditLogHandler := handler.NewAuditLogHandler(auditLogService, logger)
 	organizationHandler := handler.NewOrganizationHandler(organizationService, logger)
 	taskHandler := handler.NewTaskHandler(taskService, logger)
+	taskCommentHandler := handler.NewTaskCommentHandler(taskCommentService, logger)
 
 	// ミドルウェアの初期化
 	authMiddleware := middleware.NewAuthMiddleware(jwtService, logger)
 	rbacMiddleware := middleware.NewRBACMiddleware(logger)
 
 	// Ginルーターの設定
-	router := setupRouter(cfg, logger, healthHandler, userHandler, authHandler, permissionHandler, roleHandler, auditLogHandler, organizationHandler, taskHandler, authMiddleware, rbacMiddleware)
+	router := setupRouter(cfg, logger, healthHandler, userHandler, authHandler, permissionHandler, roleHandler, auditLogHandler, organizationHandler, taskHandler, taskCommentHandler, authMiddleware, rbacMiddleware)
 
 	// HTTPサーバーの設定
 	srv := &http.Server{
@@ -180,6 +183,7 @@ func setupRouter(
 	auditLogHandler *handler.AuditLogHandler,
 	organizationHandler *handler.OrganizationHandler,
 	taskHandler *handler.TaskHandler,
+	taskCommentHandler *handler.TaskCommentHandler,
 	authMiddleware *middleware.AuthMiddleware,
 	rbacMiddleware *middleware.RBACMiddleware,
 ) *gin.Engine {
@@ -306,6 +310,13 @@ func setupRouter(
 			// ステータス更新と割り当ては全ての認証済みユーザーが可能
 			tasks.PATCH("/:id/status", taskHandler.UpdateStatus)
 			tasks.PATCH("/:id/assign", taskHandler.AssignTask)
+
+			// タスクコメント
+			tasks.GET("/:task_id/comments", taskCommentHandler.ListByTaskID)
+			tasks.GET("/:task_id/comments/:id", taskCommentHandler.GetByID)
+			tasks.POST("/:task_id/comments", taskCommentHandler.Create)
+			tasks.PUT("/:task_id/comments/:id", taskCommentHandler.Update)
+			tasks.DELETE("/:task_id/comments/:id", taskCommentHandler.Delete)
 		}
 	}
 
