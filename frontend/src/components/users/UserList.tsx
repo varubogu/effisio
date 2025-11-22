@@ -1,7 +1,10 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 
+import { useDeleteUser } from '@/hooks/useUsers';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import type { User } from '@/types/user';
 
 interface UserListProps {
@@ -9,6 +12,27 @@ interface UserListProps {
 }
 
 export function UserList({ users }: UserListProps) {
+  const [deleteUserId, setDeleteUserId] = useState<number | null>(null);
+  const deleteUserMutation = useDeleteUser();
+
+  const handleDeleteClick = (userId: number) => {
+    setDeleteUserId(userId);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (deleteUserId === null) return;
+
+    try {
+      await deleteUserMutation.mutateAsync(deleteUserId);
+      setDeleteUserId(null);
+    } catch (error) {
+      console.error('ユーザー削除失敗:', error);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteUserId(null);
+  };
   if (users.length === 0) {
     return (
       <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
@@ -114,10 +138,16 @@ export function UserList({ users }: UserListProps) {
                   >
                     詳細
                   </Link>
-                  <button className="text-gray-600 hover:text-gray-800">
+                  <Link
+                    href={`/users/${user.id}/edit`}
+                    className="text-gray-600 hover:text-gray-800"
+                  >
                     編集
-                  </button>
-                  <button className="text-red-600 hover:text-red-800">
+                  </Link>
+                  <button
+                    onClick={() => handleDeleteClick(user.id)}
+                    className="text-red-600 hover:text-red-800"
+                  >
                     削除
                   </button>
                 </div>
@@ -126,6 +156,19 @@ export function UserList({ users }: UserListProps) {
           ))}
         </tbody>
       </table>
+
+      {/* 削除確認ダイアログ */}
+      <ConfirmDialog
+        isOpen={deleteUserId !== null}
+        title="ユーザーを削除しますか？"
+        message="このユーザーを削除すると、関連するすべてのデータも削除されます。この操作は元に戻せません。"
+        confirmText="削除"
+        cancelText="キャンセル"
+        isDangerous
+        isLoading={deleteUserMutation.isPending}
+        onConfirm={handleDeleteConfirm}
+        onCancel={handleDeleteCancel}
+      />
     </div>
   );
 }
