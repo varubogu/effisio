@@ -24,7 +24,7 @@
 | **Docker** | 20.10+ | 最新 | コンテナ実行 |
 | **Docker Compose** | 1.29+ | 2.x | マルチコンテナ管理 |
 | **Go** | 1.21+ | 1.21+ | バックエンド開発 |
-| **Node.js** | 18.17+ | 20.x LTS | フロントエンド開発 |
+| **Node.js** | 22.23.4 | 22.23.4（22 系） | フロントエンド開発。CVE-2026-111497 の修正版。Node 20 に修正はない |
 | **npm** | 9.0+ | 最新 | パッケージ管理 |
 
 ### 推奨開発ツール
@@ -194,8 +194,12 @@ brew install --cask docker
 # Go
 brew install go@1.21
 
-# Node.js
-brew install node@20
+# Node.js 22.23.4（CVE-2026-111497 修正済み。Next.js 14 では 22 系を使う）
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+export NVM_DIR="$HOME/.nvm"
+. "$NVM_DIR/nvm.sh"
+nvm install 22.23.4
+nvm alias default 22.23.4
 
 # golang-migrate
 brew install golang-migrate
@@ -252,8 +256,9 @@ source ~/.bashrc
 # Node.js（nvm経由）
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
 source ~/.bashrc
-nvm install 20
-nvm use 20
+nvm install 22.23.4
+nvm use 22.23.4
+nvm alias default 22.23.4
 
 # golang-migrate
 curl -L https://github.com/golang-migrate/migrate/releases/download/v4.16.2/migrate.linux-amd64.tar.gz | tar xvz
@@ -295,8 +300,9 @@ source ~/.bashrc
 # Node.js（nvm経由）
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
 source ~/.bashrc
-nvm install 20
-nvm use 20
+nvm install 22.23.4
+nvm use 22.23.4
+nvm alias default 22.23.4
 
 # golang-migrate
 curl -L https://github.com/golang-migrate/migrate/releases/download/v4.16.2/migrate.linux-amd64.tar.gz | tar xvz

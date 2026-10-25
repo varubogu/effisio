@@ -1,6 +1,7 @@
-import { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, RenderOptions } from '@testing-library/react';
+import { render, type RenderOptions, type RenderResult } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { vi } from 'vitest';
 
 // Create a fresh QueryClient for each test
 export function createTestQueryClient() {
@@ -31,7 +32,7 @@ export function TestWrapper({ children }: { children: ReactNode }) {
 export function renderWithProviders(
   ui: ReactNode,
   options?: Omit<RenderOptions, 'wrapper'>
-) {
+): RenderResult {
   return render(ui, { wrapper: TestWrapper, ...options });
 }
 
@@ -59,7 +60,7 @@ export function setupLocalStorageMock() {
 export function setupMatchMediaMock() {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
-    value: vi.fn().mockImplementation((query) => ({
+    value: vi.fn().mockImplementation((query: string) => ({
       matches: false,
       media: query,
       onchange: null,

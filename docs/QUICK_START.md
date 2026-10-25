@@ -22,11 +22,11 @@
 | Docker | 20.10+ | `docker --version` |
 | Docker Compose | 2.0+ | `docker-compose --version` |
 | Go | 1.21+ | `go version` |
-| Node.js | 18.0+ | `node --version` |
+| Node.js | 22.23.4（22 系） | `node --version` |
 | npm | 9.0+ | `npm --version` |
 
 **まだインストールしていない場合:**
-- macOS: `brew install docker docker-compose go node`
+- macOS: `brew install docker docker-compose go`。Node.js は 22.23.4 を入れる（手順は `docs/DEVELOPMENT_SETUP.md`）
 - Windows: [Docker Desktop](https://www.docker.com/products/docker-desktop), [Go](https://go.dev/dl/), [Node.js](https://nodejs.org/)
 - Linux: 各ディストリビューションのパッケージマネージャーを使用
 
@@ -168,7 +168,7 @@ curl http://localhost:8080/api/v1/users
 **A1. Go/Node.jsのバージョンを確認**
 ```bash
 go version  # Go 1.21以上必要
-node --version  # Node.js 18以上必要
+node --version  # Node.js 22.23.4 以上（22 系）が必要
 ```
 
 **A2. Dockerが起動していない**

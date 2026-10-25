@@ -2,7 +2,8 @@
 # Effisio フロントエンド開発環境 Dockerfile
 # ========================================
 
-FROM node:20-alpine
+# Node.js 22.23.4 は CVE-2026-111497 の修正版。frontend/.nvmrc と揃える。
+FROM node:22.23.4-alpine
 
 # 作業ディレクトリ
 WORKDIR /app

@@ -1,12 +1,14 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { usersApi } from './users';
-import { api } from './api';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import type {
-  User,
   CreateUserRequest,
-  UpdateUserRequest,
   PaginatedResponse,
+  UpdateUserRequest,
+  User,
 } from '@/types/user';
+
+import { api } from './api';
+import { usersApi } from './users';
 
 // Mock the api module
 vi.mock('./api', () => ({
