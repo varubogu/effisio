@@ -1,12 +1,12 @@
-import { api } from './api';
-
 import type {
-  User,
-  PaginatedResponse,
   ApiResponse,
   CreateUserRequest,
+  PaginatedResponse,
   UpdateUserRequest,
+  User,
 } from '@/types/user';
+
+import { api } from './api';
 
 export const usersApi = {
   // ユーザー一覧を取得（ページネーション付き）

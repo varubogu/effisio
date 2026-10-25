@@ -1,24 +1,28 @@
 # ========================================
 # Effisio フロントエンド本番環境 Dockerfile
 # ========================================
+# Node.js 22.23.4 は CVE-2026-111497（Brotli デコーダの境界外書き込み）の修正版。
+# Node 20 系に修正はない。Next.js 14 との互換のため 24 ではなく 22 LTS を使う。
+# バージョンは frontend/.nvmrc と揃える。
 
 # ========================================
 # ステージ1: 依存関係インストール
 # ========================================
-FROM node:20-alpine AS deps
+FROM node:22.23.4-alpine AS deps
 
 WORKDIR /app
 
 # 依存関係ファイルをコピー
 COPY package.json package-lock.json* ./
 
-# 依存関係インストール
-RUN npm ci --only=production
+# next build は TypeScript と ESLint（devDependencies）を使う。
+# 実行イメージは standalone 出力だけをコピーする。
+RUN npm ci
 
 # ========================================
 # ステージ2: ビルド
 # ========================================
-FROM node:20-alpine AS builder
+FROM node:22.23.4-alpine AS builder
 
 WORKDIR /app
 
@@ -28,6 +32,9 @@ COPY --from=deps /app/node_modules ./node_modules
 # ソースコードをコピー
 COPY . .
 
+# public が無いプロジェクトでも runner の COPY が失敗しないようにする
+RUN mkdir -p public
+
 # Next.js ビルド
 # 環境変数は実行時に渡す
 ENV NEXT_TELEMETRY_DISABLED 1
@@ -36,7 +43,7 @@ RUN npm run build
 # ========================================
 # ステージ3: 実行環境
 # ========================================
-FROM node:20-alpine AS runner
+FROM node:22.23.4-alpine AS runner
 
 WORKDIR /app
 

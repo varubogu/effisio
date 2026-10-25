@@ -1,12 +1,12 @@
-import { api } from './api';
-
 import type {
+  ApiResponse,
   LoginRequest,
   LoginResponse,
   RefreshTokenRequest,
   RefreshTokenResponse,
-  ApiResponse,
 } from '@/types/auth';
+
+import { api } from './api';
 
 // ローカルストレージのキー
 const ACCESS_TOKEN_KEY = 'access_token';

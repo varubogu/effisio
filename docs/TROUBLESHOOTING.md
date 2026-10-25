@@ -92,11 +92,11 @@ go version
 
 **症状:**
 ```
-Error: Node.js version 16.x is not supported. Please use version 18 or higher.
+Error: The engine "node" is incompatible with this module. Expected version ">=22.23.4 <23.0.0".
 ```
 
 **原因:**
-Node.js 18以上が必要だが、古いバージョンがインストールされている
+Node.js 22.23.4 以上（22 系）が必要だが、古いバージョンがインストールされている。Node 20 以前には CVE-2026-111497 の修正がない。
 
 **解決方法:**
 
@@ -105,19 +105,19 @@ Node.js 18以上が必要だが、古いバージョンがインストールさ�
 # nvmをインストール（まだの場合）
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
 
-# 最新のLTS版をインストール
-nvm install 18
-nvm use 18
-nvm alias default 18
+# 修正済みの 22 系をインストール
+nvm install 22.23.4
+nvm use 22.23.4
+nvm alias default 22.23.4
 
 # バージョン確認
 node --version
-# 期待される出力: v18.x.x
+# 期待される出力: v22.23.4
 ```
 
 **Windows:**
-- https://nodejs.org/ から LTS版をダウンロード
-- インストーラーを実行
+- https://nodejs.org/dist/v22.23.4/ から 22.23.4 をインストールする
+- 22 系の新しい修正版でもよい。24 系は Next.js 14 では使わない
 
 ---
 

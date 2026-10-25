@@ -1,7 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { authApi, tokenStorage } from './auth';
-import { api } from './api';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import type { LoginRequest, LoginResponse, RefreshTokenResponse } from '@/types/auth';
+
+import { api } from './api';
+import { authApi, tokenStorage } from './auth';
 
 // Mock the api module
 vi.mock('./api', () => ({
@@ -51,7 +53,7 @@ describe('tokenStorage', () => {
 
     it('should return null when window is undefined (SSR)', () => {
       const originalWindow = global.window;
-      // @ts-ignore
+      // @ts-expect-error SSR を模して window を消す
       delete global.window;
 
       const token = tokenStorage.getAccessToken();
@@ -94,7 +96,7 @@ describe('tokenStorage', () => {
 
     it('should not throw when window is undefined (SSR)', () => {
       const originalWindow = global.window;
-      // @ts-ignore
+      // @ts-expect-error SSR を模して window を消す
       delete global.window;
 
       expect(() => {

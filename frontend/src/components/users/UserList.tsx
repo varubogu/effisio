@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import { useState } from 'react';
 
-import { useDeleteUser } from '@/hooks/useUsers';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { useDeleteUser } from '@/hooks/useUsers';
 import type { User } from '@/types/user';
 
 interface UserListProps {
@@ -20,7 +20,9 @@ export function UserList({ users }: UserListProps) {
   };
 
   const handleDeleteConfirm = async () => {
-    if (deleteUserId === null) return;
+    if (deleteUserId === null) {
+      return;
+    }
 
     try {
       await deleteUserMutation.mutateAsync(deleteUserId);
