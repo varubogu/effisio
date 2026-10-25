@@ -4,8 +4,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { useUser, useUpdateUser } from '@/hooks/useUsers';
+
 import { Alert } from '@/components/ui/Alert';
+import { useUpdateUser, useUser } from '@/hooks/useUsers';
 import type { UpdateUserRequest, UserRole, UserStatus } from '@/types/user';
 
 interface EditUserPageProps {
@@ -152,7 +153,7 @@ export default function EditUserPage({ params }: EditUserPageProps) {
           <div className="space-y-6 px-6 py-4">
             {/* ユーザー名（読み取り専用） */}
             <div>
-              <label className="block text-sm font-medium text-gray-700">ユーザー名</label>
+              <p className="block text-sm font-medium text-gray-700">ユーザー名</p>
               <div className="mt-1 rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-gray-900">
                 {user.username}
               </div>

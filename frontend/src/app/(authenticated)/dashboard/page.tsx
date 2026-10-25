@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 
-import { useDashboardOverview } from '@/hooks/useDashboard';
 import { Alert } from '@/components/ui/Alert';
+import { useDashboardOverview } from '@/hooks/useDashboard';
 
 export default function DashboardPage() {
   const { data: overview, isLoading, error } = useDashboardOverview();

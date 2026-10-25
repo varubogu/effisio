@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 ### Security
+- フロントエンドの Node.js を 22.23.4 に更新（CVE-2026-111497。Node 20 系に修正版はない）
 
 ## [0.1.0] - 2025-11-21
 

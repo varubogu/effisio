@@ -1,9 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { useDashboardOverview, type DashboardOverview } from './useDashboard';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { api } from '@/lib/api';
 import { TestWrapper } from '@/test/test-utils';
 import type { ApiResponse } from '@/types/auth';
+
+import { useDashboardOverview, type DashboardOverview } from './useDashboard';
 
 // Mock the api module
 vi.mock('@/lib/api', () => ({

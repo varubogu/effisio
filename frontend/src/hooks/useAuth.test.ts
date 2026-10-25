@@ -1,9 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { useLogin, useLogout, useLogoutAll, useIsAuthenticated } from './useAuth';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { authApi } from '@/lib/auth';
-import { TestWrapper, createTestQueryClient } from '@/test/test-utils';
+import { TestWrapper } from '@/test/test-utils';
 import type { LoginRequest } from '@/types/auth';
+
+import { useIsAuthenticated, useLogin, useLogout, useLogoutAll } from './useAuth';
 
 // Mock authApi
 vi.mock('@/lib/auth', () => ({
@@ -249,7 +251,7 @@ describe('useAuth hooks', () => {
 
     it('should return false when window is undefined (SSR)', () => {
       const originalWindow = global.window;
-      // @ts-ignore
+      // @ts-expect-error SSR を模して window を消す
       delete global.window;
 
       const result = useIsAuthenticated();

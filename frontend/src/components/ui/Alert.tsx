@@ -79,7 +79,7 @@ export function Alert({ type, title, message, onClose }: AlertProps) {
   const styles = alertStyles[type];
 
   return (
-    <div className={clsx('rounded-lg p-4', styles.bg)}>
+    <div className={clsx('rounded-lg p-4', styles.bg, styles.text)}>
       <div className="flex items-start">
         <div className={clsx('flex-shrink-0', styles.icon)}>{icons[type]}</div>
         <div className="ml-3 flex-1">
@@ -88,6 +88,7 @@ export function Alert({ type, title, message, onClose }: AlertProps) {
         </div>
         {onClose && (
           <button
+            type="button"
             onClick={onClose}
             className={clsx('ml-3 flex-shrink-0', styles.button)}
           >

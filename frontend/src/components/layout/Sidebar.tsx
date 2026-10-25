@@ -37,8 +37,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     <>
       {/* モバイルバックドロップ */}
       {isOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black bg-opacity-50 md:hidden"
+        <button
+          type="button"
+          aria-label="メニューを閉じる"
+          className="fixed inset-0 z-40 cursor-pointer border-0 bg-black bg-opacity-50 p-0 md:hidden"
           onClick={onClose}
         />
       )}

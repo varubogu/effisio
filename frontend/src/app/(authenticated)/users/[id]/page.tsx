@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useUser } from '@/hooks/useUsers';
+
 import { Alert } from '@/components/ui/Alert';
+import { useUser } from '@/hooks/useUsers';
 
 interface UserDetailPageProps {
   params: {

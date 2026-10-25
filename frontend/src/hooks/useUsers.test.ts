@@ -1,20 +1,22 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import {
-  useUsers,
-  useUser,
-  useCreateUser,
-  useUpdateUser,
-  useDeleteUser,
-} from './useUsers';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { usersApi } from '@/lib/users';
 import { TestWrapper } from '@/test/test-utils';
 import type {
-  User,
   CreateUserRequest,
-  UpdateUserRequest,
   PaginatedResponse,
+  UpdateUserRequest,
+  User,
 } from '@/types/user';
+
+import {
+  useCreateUser,
+  useDeleteUser,
+  useUpdateUser,
+  useUser,
+  useUsers,
+} from './useUsers';
 
 // Mock usersApi
 vi.mock('@/lib/users', () => ({
